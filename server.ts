@@ -116,9 +116,9 @@ function loadNotes(email?: any) {
       return JSON.parse(data);
     }
   } catch (error) {
-    console.error("Error loading notes database, returning defaults:", error);
+    console.error("Error loading notes database:", error);
   }
-  return DEFAULT_NOTES;
+  return [];
 }
 
 // Save notes to DB
@@ -153,7 +153,7 @@ function loadFolders(email?: any) {
   } catch (error) {
     console.error("Error loading folders database:", error);
   }
-  return DEFAULT_FOLDERS;
+  return [];
 }
 
 function saveFolders(folders: any, email?: any) {
@@ -217,12 +217,7 @@ app.get("/api/notes", async (req, res) => {
   
   if (isMongoActive) {
     try {
-      let notes = await MongoNote.find({ userEmail: email }).lean();
-      if (notes.length === 0) {
-        const seeded = DEFAULT_NOTES.map(n => ({ ...n, userEmail: email }));
-        await MongoNote.insertMany(seeded);
-        notes = await MongoNote.find({ userEmail: email }).lean();
-      }
+      const notes = await MongoNote.find({ userEmail: email }).lean();
       return res.json({ notes });
     } catch (err) {
       console.error("MongoDB fetch notes failed, falling back to JSON:", err);
@@ -268,12 +263,7 @@ app.get("/api/folders", async (req, res) => {
 
   if (isMongoActive) {
     try {
-      let folders = await MongoFolder.find({ userEmail: email }).lean();
-      if (folders.length === 0) {
-        const seeded = DEFAULT_FOLDERS.map(f => ({ ...f, userEmail: email }));
-        await MongoFolder.insertMany(seeded);
-        folders = await MongoFolder.find({ userEmail: email }).lean();
-      }
+      const folders = await MongoFolder.find({ userEmail: email }).lean();
       return res.json({ folders });
     } catch (err) {
       console.error("MongoDB fetch folders failed, falling back to JSON:", err);
