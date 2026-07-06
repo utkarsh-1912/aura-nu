@@ -33,6 +33,8 @@ import {
   Star,
   MoreVertical,
   Lock,
+  Search,
+  Pin,
   Unlock,
   Trash2,
   Archive,
@@ -66,6 +68,7 @@ interface EditorAreaProps {
   folders?: Folder[];
   isFocusMode: boolean;
   setIsFocusMode: (focus: boolean) => void;
+  settings?: Settings;
 }
 
 export default function EditorArea({
@@ -86,6 +89,7 @@ export default function EditorArea({
   folders = [],
   isFocusMode,
   setIsFocusMode,
+  settings,
 }: EditorAreaProps) {
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("split");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -129,11 +133,47 @@ export default function EditorArea({
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const lastHistoryPushTime = useRef<number>(0);
 
+  const [localContent, setLocalContent] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileSubTab, setMobileSubTab] = useState<"edit" | "preview">("edit");
+  const [showFindBar, setShowFindBar] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [editingBlockIndex, setEditingBlockIndex] = useState<number | null>(null);
+  const [editingBlockContent, setEditingBlockContent] = useState("");
+  const [activeStyles, setActiveStyles] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    code: false,
+  });
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const gutterRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setUndoStack([]);
     setRedoStack([]);
     lastHistoryPushTime.current = 0;
+    if (note) {
+      setLocalContent(note.content || "");
+    } else {
+      setLocalContent("");
+    }
   }, [note?.id]);
+
+  useEffect(() => {
+    if (note && note.content !== localContent) {
+      if (settings?.autoSave || localContent === "") {
+        setLocalContent(note.content || "");
+      }
+    }
+  }, [note?.content, settings?.autoSave]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -222,6 +262,12 @@ export default function EditorArea({
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const textarea = textareaRef.current;
     if (!textarea || note?.isLocked) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      e.preventDefault();
+      handleManualSave();
+      return;
+    }
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
@@ -478,6 +524,11 @@ export default function EditorArea({
     return () => clearTimeout(timer);
   };
 
+  const handleManualSave = () => {
+    if (!note) return;
+    handleContentChange(localContent);
+  };
+
   const handleUndo = () => {
     if (undoStack.length === 0 || note.isLocked) return;
     const previous = undoStack[undoStack.length - 1];
@@ -587,6 +638,95 @@ export default function EditorArea({
     }, 50);
   };
 
+  const checkSelectionStyles = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    const hasBoldWrap = 
+      (start >= 2 && end <= text.length - 2 && text.substring(start - 2, start) === "**" && text.substring(end, end + 2) === "**") ||
+      (text.substring(start, end).startsWith("**") && text.substring(start, end).endsWith("**") && (end - start) >= 4);
+
+    const hasUnderlineWrap = 
+      (start >= 2 && end <= text.length - 2 && text.substring(start - 2, start) === "__" && text.substring(end, end + 2) === "__") ||
+      (text.substring(start, end).startsWith("__") && text.substring(start, end).endsWith("__") && (end - start) >= 4);
+
+    const hasItalicWrap = 
+      (start >= 1 && end <= text.length - 1 && text.substring(start - 1, start) === "*" && text.substring(end, end + 1) === "*") ||
+      (start >= 1 && end <= text.length - 1 && text.substring(start - 1, start) === "_" && text.substring(end, end + 1) === "_") ||
+      (text.substring(start, end).startsWith("*") && text.substring(start, end).endsWith("*") && (end - start) >= 2) ||
+      (text.substring(start, end).startsWith("_") && text.substring(start, end).endsWith("_") && (end - start) >= 2);
+
+    const hasCodeWrap = 
+      (start >= 1 && end <= text.length - 1 && text.substring(start - 1, start) === "`" && text.substring(end, end + 1) === "`") ||
+      (text.substring(start, end).startsWith("`") && text.substring(start, end).endsWith("`") && (end - start) >= 2);
+
+    setActiveStyles({
+      bold: hasBoldWrap,
+      underline: hasUnderlineWrap,
+      italic: hasItalicWrap && !hasBoldWrap && !hasUnderlineWrap,
+      code: hasCodeWrap,
+    });
+  };
+
+  const toggleFormat = (type: "bold" | "italic" | "underline" | "code") => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    const selectedText = text.substring(start, end);
+
+    let syntaxBefore = "";
+    let syntaxAfter = "";
+    if (type === "bold") { syntaxBefore = "**"; syntaxAfter = "**"; }
+    else if (type === "italic") { syntaxBefore = "*"; syntaxAfter = "*"; }
+    else if (type === "underline") { syntaxBefore = "__"; syntaxAfter = "__"; }
+    else if (type === "code") { syntaxBefore = "`"; syntaxAfter = "`"; }
+
+    const lenB = syntaxBefore.length;
+    const lenA = syntaxAfter.length;
+
+    const isInsideWrap = start >= lenB && end <= text.length - lenA && 
+                         text.substring(start - lenB, start) === syntaxBefore && 
+                         text.substring(end, end + lenA) === syntaxAfter;
+
+    const isWrappedSelf = selectedText.startsWith(syntaxBefore) && selectedText.endsWith(syntaxAfter) && selectedText.length >= (lenB + lenA);
+
+    let newContent = "";
+    let newStart = start;
+    let newEnd = end;
+
+    if (isInsideWrap) {
+      const unwrapped = selectedText;
+      newContent = text.substring(0, start - lenB) + unwrapped + text.substring(end + lenA);
+      newStart = start - lenB;
+      newEnd = end - lenB;
+    } else if (isWrappedSelf) {
+      const unwrapped = selectedText.substring(lenB, selectedText.length - lenA);
+      newContent = text.substring(0, start) + unwrapped + text.substring(end);
+      newStart = start;
+      newEnd = end - lenB - lenA;
+    } else {
+      const wrapped = syntaxBefore + selectedText + syntaxAfter;
+      newContent = text.substring(0, start) + wrapped + text.substring(end);
+      newStart = start + lenB;
+      newEnd = end + lenB;
+    }
+
+    handleContentChange(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newStart, newEnd);
+      checkSelectionStyles();
+    }, 50);
+  };
+
   // Slash commands triggers
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -605,7 +745,16 @@ export default function EditorArea({
       setShowSlashMenu(false);
     }
 
-    handleContentChange(value);
+    setLocalContent(value);
+    if (settings?.autoSave !== false) {
+      handleContentChange(value);
+    }
+  };
+
+  const handleTextareaScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
   };
 
   // Helper to approximate caret coordinates
@@ -737,11 +886,23 @@ export default function EditorArea({
         regex: /\[([\s\S]+?)\]\(([\s\S]+?)\)/,
       },
       {
+        type: "bold_italic_stars",
+        regex: /\*\*\*([\s\S]+?)\*\*\*/,
+      },
+      {
+        type: "bold_italic_mixed1",
+        regex: /\*\*\_([\s\S]+?)\_\*\*/,
+      },
+      {
+        type: "bold_italic_mixed2",
+        regex: /_\*\*([\s\S]+?)\*\_\_/,
+      },
+      {
         type: "bold_stars",
         regex: /\*\*([\s\S]+?)\*\*/,
       },
       {
-        type: "bold_underscores",
+        type: "underline_underscores",
         regex: /__([\s\S]+?)__/,
       },
       {
@@ -770,6 +931,19 @@ export default function EditorArea({
 
     // If no patterns match, return the plain text as a single node
     if (!earliestMatch) {
+      if (findQuery && text.toLowerCase().includes(findQuery.toLowerCase())) {
+        const parts: React.ReactNode[] = [];
+        const regex = new RegExp(`(${findQuery.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, "gi");
+        const matches = text.split(regex);
+        matches.forEach((p, idx) => {
+          if (p.toLowerCase() === findQuery.toLowerCase()) {
+            parts.push(<mark key={`${keyPrefix}-find-${idx}`} className="bg-amber-300 dark:bg-amber-700/80 text-slate-900 dark:text-zinc-100 rounded px-0.5 font-semibold">{p}</mark>);
+          } else {
+            parts.push(<span key={`${keyPrefix}-text-${idx}`}>{p}</span>);
+          }
+        });
+        return parts;
+      }
       return [<span key={keyPrefix}>{text}</span>];
     }
 
@@ -817,11 +991,25 @@ export default function EditorArea({
           <ExternalLink size={10} className="inline-block" />
         </a>
       );
-    } else if (selectedPattern.type === "bold_stars" || selectedPattern.type === "bold_underscores") {
+    } else if (selectedPattern.type === "bold_italic_stars" || selectedPattern.type === "bold_italic_mixed1" || selectedPattern.type === "bold_italic_mixed2") {
+      parts.push(
+        <strong key={currentKey} className="font-bold text-slate-900 dark:text-zinc-50">
+          <em className="italic text-slate-850 dark:text-zinc-200">
+            {renderInlineMarkdown(matchContent, `${currentKey}-bold-italic`)}
+          </em>
+        </strong>
+      );
+    } else if (selectedPattern.type === "bold_stars") {
       parts.push(
         <strong key={currentKey} className="font-bold text-slate-900 dark:text-zinc-50">
           {renderInlineMarkdown(matchContent, `${currentKey}-bold`)}
         </strong>
+      );
+    } else if (selectedPattern.type === "underline_underscores") {
+      parts.push(
+        <u key={currentKey} className="underline decoration-slate-400 dark:decoration-zinc-650">
+          {renderInlineMarkdown(matchContent, `${currentKey}-underline`)}
+        </u>
       );
     } else if (selectedPattern.type === "italic_stars" || selectedPattern.type === "italic_underscores") {
       parts.push(
@@ -917,34 +1105,105 @@ export default function EditorArea({
       if (isUnchecked || isChecked) {
         const labelText = line.replace("- [ ] ", "").replace("- [x] ", "").replace("- [X] ", "");
         const currentIdx = i;
-        renderedElements.push(
-          <div key={`checklist-${i}`} className="flex items-center gap-2.5 my-2.5 select-none animate-fade-in">
-            <button
-              onClick={() => toggleChecklistItem(currentIdx)}
-              className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
-                isChecked
-                  ? "bg-blue-500 border-blue-500 text-white"
-                  : "border-slate-300 dark:border-zinc-700 hover:border-blue-400"
-              } cursor-pointer`}
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-checklist-${currentIdx}`} className="flex items-center gap-2.5 my-2.5 select-none animate-fade-in w-full">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-[14px] text-slate-800 dark:text-zinc-300 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <div
+              key={`checklist-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`flex items-center gap-2.5 my-2.5 select-none animate-fade-in rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
             >
-              {isChecked && <Check size={11} className="stroke-[3]" />}
-            </button>
-            <span className={`text-[14px] ${isChecked ? "line-through text-slate-400 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-300"}`}>
-              {renderInlineMarkdown(labelText)}
-            </span>
-          </div>
-        );
+              <button
+                onClick={() => toggleChecklistItem(currentIdx)}
+                className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                  isChecked
+                    ? "bg-blue-500 border-blue-500 text-white"
+                    : "border-slate-300 dark:border-zinc-700 hover:border-blue-400"
+                } cursor-pointer`}
+              >
+                {isChecked && <Check size={11} className="stroke-[3]" />}
+              </button>
+              <span className={`text-[14px] ${isChecked ? "line-through text-slate-400 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-300"}`}>
+                {renderInlineMarkdown(labelText)}
+              </span>
+            </div>
+          );
+        }
         i++;
         continue;
       }
 
       // 4. UNORDERED LISTS
       if (line.startsWith("- ") || line.startsWith("* ")) {
-        renderedElements.push(
-          <li key={`bullet-${i}`} className="text-sm list-disc list-inside text-slate-700 dark:text-zinc-300 my-1 pl-2">
-            {renderInlineMarkdown(line.substring(2))}
-          </li>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-bullet-${currentIdx}`} className="pl-4 my-1 w-full animate-fade-in">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-sm text-slate-750 dark:text-zinc-350 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <li
+              key={`bullet-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`text-sm list-disc list-inside text-slate-700 dark:text-zinc-300 my-1 pl-2 rounded-lg hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(line.substring(2))}
+            </li>
+          );
+        }
         i++;
         continue;
       }
@@ -952,51 +1211,231 @@ export default function EditorArea({
       // 5. ORDERED LISTS
       const matchNumbered = line.match(/^(\d+)\.\s(.*)/);
       if (matchNumbered) {
-        renderedElements.push(
-          <li key={`numbered-${i}`} className="text-sm list-decimal list-inside text-slate-700 dark:text-zinc-300 my-1 pl-2">
-            {renderInlineMarkdown(matchNumbered[2])}
-          </li>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-numbered-${currentIdx}`} className="pl-4 my-1 w-full animate-fade-in">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-sm text-slate-750 dark:text-zinc-350 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <li
+              key={`numbered-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`text-sm list-decimal list-inside text-slate-700 dark:text-zinc-300 my-1 pl-2 rounded-lg hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(matchNumbered[2])}
+            </li>
+          );
+        }
         i++;
         continue;
       }
 
       // 6. HEADINGS
       if (line.startsWith("# ")) {
-        renderedElements.push(
-          <h1 key={`h1-${i}`} className="text-2xl font-bold tracking-tight mb-4 mt-6 text-slate-900 dark:text-zinc-50 flex items-center gap-2">
-            {renderInlineMarkdown(line.replace("# ", ""))}
-          </h1>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-h1-${currentIdx}`} className="mb-4 mt-6 w-full animate-fade-in">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-2xl font-bold tracking-tight text-slate-900 dark:text-zinc-50 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <h1
+              key={`h1-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`text-2xl font-bold tracking-tight mb-4 mt-6 text-slate-900 dark:text-zinc-50 flex items-center gap-2 rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(line.replace("# ", ""))}
+            </h1>
+          );
+        }
         i++;
         continue;
       }
       if (line.startsWith("## ")) {
-        renderedElements.push(
-          <h2 key={`h2-${i}`} className="text-xl font-semibold tracking-tight mb-3 mt-5 text-slate-900 dark:text-zinc-100 flex items-center gap-2">
-            {renderInlineMarkdown(line.replace("## ", ""))}
-          </h2>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-h2-${currentIdx}`} className="mb-3 mt-5 w-full animate-fade-in">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <h2
+              key={`h2-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`text-xl font-semibold tracking-tight mb-3 mt-5 text-slate-900 dark:text-zinc-100 flex items-center gap-2 rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(line.replace("## ", ""))}
+            </h2>
+          );
+        }
         i++;
         continue;
       }
       if (line.startsWith("### ")) {
-        renderedElements.push(
-          <h3 key={`h3-${i}`} className="text-lg font-medium mb-2 mt-4 text-slate-900 dark:text-zinc-100 flex items-center gap-2">
-            {renderInlineMarkdown(line.replace("### ", ""))}
-          </h3>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-h3-${currentIdx}`} className="mb-2 mt-4 w-full animate-fade-in">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-lg font-medium text-slate-900 dark:text-zinc-100 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <h3
+              key={`h3-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`text-lg font-medium mb-2 mt-4 text-slate-900 dark:text-zinc-100 flex items-center gap-2 rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(line.replace("### ", ""))}
+            </h3>
+          );
+        }
         i++;
         continue;
       }
 
       // 7. BLOCKQUOTES
       if (line.startsWith("> ")) {
-        renderedElements.push(
-          <blockquote key={`quote-${i}`} className="border-l-4 border-blue-500/80 dark:border-zinc-700 pl-4 py-1 italic my-3 text-slate-600 dark:text-zinc-400">
-            {renderInlineMarkdown(line.substring(2))}
-          </blockquote>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-quote-${currentIdx}`} className="my-3 pl-4 border-l-4 border-blue-500/80 dark:border-zinc-700 w-full animate-fade-in">
+              <input
+                type="text"
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-sm text-slate-600 dark:text-zinc-400 font-mono py-0.5"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <blockquote
+              key={`quote-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`border-l-4 border-blue-500/80 dark:border-zinc-700 pl-4 py-1 italic my-3 text-slate-600 dark:text-zinc-400 rounded-r-lg hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(line.substring(2))}
+            </blockquote>
+          );
+        }
         i++;
         continue;
       }
@@ -1005,11 +1444,46 @@ export default function EditorArea({
       if (line.trim() === "") {
         renderedElements.push(<div key={`empty-${i}`} className="h-2"></div>);
       } else {
-        renderedElements.push(
-          <p key={`p-${i}`} className="text-[14px] text-slate-800 dark:text-zinc-300 my-2 leading-relaxed">
-            {renderInlineMarkdown(line)}
-          </p>
-        );
+        const currentIdx = i;
+        if (editingBlockIndex === currentIdx && !note.isLocked) {
+          renderedElements.push(
+            <div key={`edit-p-${currentIdx}`} className="my-2 w-full animate-fade-in">
+              <textarea
+                value={editingBlockContent}
+                onChange={(e) => {
+                  setEditingBlockContent(e.target.value);
+                  const updatedLines = [...lines];
+                  updatedLines[currentIdx] = e.target.value;
+                  handleContentChange(updatedLines.join("\n"), true);
+                }}
+                onBlur={() => setEditingBlockIndex(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    setEditingBlockIndex(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent border-b border-blue-500 outline-none text-[14px] text-slate-800 dark:text-zinc-300 font-mono py-1 resize-none h-16"
+              />
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <p
+              key={`p-${i}`}
+              onDoubleClick={() => {
+                if (!note.isLocked) {
+                  setEditingBlockIndex(currentIdx);
+                  setEditingBlockContent(line);
+                }
+              }}
+              className={`text-[14px] text-slate-800 dark:text-zinc-300 my-2 leading-relaxed rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+            >
+              {renderInlineMarkdown(line)}
+            </p>
+          );
+        }
       }
       i++;
     }
@@ -1020,6 +1494,24 @@ export default function EditorArea({
       </div>
     );
   };
+
+  const fontSizeClass = 
+    settings?.fontSize === "xs" ? "text-xs" :
+    settings?.fontSize === "sm" ? "text-sm" :
+    settings?.fontSize === "lg" ? "text-lg" :
+    settings?.fontSize === "xl" ? "text-xl" :
+    "text-[14.5px]"; // default base
+
+  const lineWrappingClass = 
+    settings?.lineWrapping === false ? "whitespace-pre overflow-x-auto" : "whitespace-pre-wrap break-words";
+
+  const folderName = React.useMemo(() => {
+    if (!note?.folder) return "None";
+    const found = folders.find(f => f.id === note.folder);
+    return found ? found.name : note.folder;
+  }, [note?.folder, folders]);
+
+  const lines = localContent.split("\n");
 
   return (
     <div
@@ -1068,29 +1560,6 @@ export default function EditorArea({
                 placeholder="Untitled Note"
                 readOnly={note.isLocked}
               />
-              
-              {/* Status Badge */}
-              <span
-                className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider select-none flex-shrink-0 ${
-                  note.isTrashed
-                    ? "bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
-                    : note.isArchived
-                    ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400"
-                    : note.status === "Published"
-                    ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
-                    : note.status === "In Review"
-                    ? "bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
-                    : "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400"
-                }`}
-              >
-                {note.isTrashed ? "Trashed" : note.isArchived ? "Archived" : note.status || "Draft"}
-              </span>
-
-              {/* Auto save indicator */}
-              <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500 font-mono flex-shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>{isSaving ? "Saving..." : "Synced"}</span>
-              </div>
             </div>
 
             {/* Right Action buttons */}
@@ -1190,6 +1659,25 @@ export default function EditorArea({
               >
                 <History size={14} />
               </button>
+
+              {/* Find/Search within Note */}
+              <button
+                onClick={() => {
+                  const next = !showFindBar;
+                  setShowFindBar(next);
+                  if (!next) setFindQuery("");
+                }}
+                title="Find text in note"
+                className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                  showFindBar
+                    ? "bg-blue-50 text-blue-500 border-blue-200 dark:bg-zinc-800 dark:text-white"
+                    : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
+                }`}
+              >
+                <Search size={14} />
+              </button>
+
+
 
               {/* Focus Mode button */}
               <button
@@ -1594,6 +2082,32 @@ export default function EditorArea({
         </div>
       )}
 
+      {showFindBar && (
+        <div className={`px-4 py-2 border-b flex items-center justify-between text-xs gap-3 select-none ${
+          theme === "dark" ? "border-zinc-805 bg-zinc-950/40" : "border-slate-200 bg-slate-50"
+        }`}>
+          <div className="flex items-center gap-2 flex-grow">
+            <Search size={12} className="text-slate-400" />
+            <input
+              type="text"
+              placeholder="Find in note..."
+              value={findQuery}
+              onChange={(e) => setFindQuery(e.target.value)}
+              className="bg-transparent border-none outline-none focus:ring-0 text-xs w-full text-slate-800 dark:text-zinc-200"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setShowFindBar(false);
+              setFindQuery("");
+            }}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-250 cursor-pointer"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       {/* Focus Mode Header Overlay (Allows escaping) */}
       {isFocusMode && (
         <button
@@ -1632,13 +2146,37 @@ export default function EditorArea({
           <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
 
           {/* Text treatments */}
-          <button onClick={() => insertMarkdown("**", "**")} title="Bold" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button
+            onClick={() => toggleFormat("bold")}
+            title="Bold"
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              activeStyles.bold
+                ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
+                : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
+            }`}
+          >
             <Bold size={14} />
           </button>
-          <button onClick={() => insertMarkdown("*", "*")} title="Italic" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button
+            onClick={() => toggleFormat("italic")}
+            title="Italic"
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              activeStyles.italic
+                ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
+                : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
+            }`}
+          >
             <Italic size={14} />
           </button>
-          <button onClick={() => insertMarkdown("__", "__")} title="Underline" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button
+            onClick={() => toggleFormat("underline")}
+            title="Underline"
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              activeStyles.underline
+                ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
+                : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
+            }`}
+          >
             <Underline size={14} />
           </button>
           
@@ -1691,12 +2229,40 @@ export default function EditorArea({
       )}
 
       {/* Main Workspace split */}
-      <div className="flex-grow flex min-h-0 relative">
+      <div className="flex-grow flex flex-col md:flex-row min-h-0 relative">
         
+        {/* Mobile sub-tab toggle for split view */}
+        {isMobile && viewMode === "split" && (
+          <div className={`px-4 py-2 border-b flex items-center justify-center gap-2 select-none md:hidden ${
+            theme === "dark" ? "border-zinc-805 bg-zinc-950/40" : "border-slate-200 bg-slate-50/50"
+          }`}>
+            <button
+              onClick={() => setMobileSubTab("edit")}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition-all cursor-pointer ${
+                mobileSubTab === "edit"
+                  ? "bg-blue-500 text-white shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+              }`}
+            >
+              Edit Markdown
+            </button>
+            <button
+              onClick={() => setMobileSubTab("preview")}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition-all cursor-pointer ${
+                mobileSubTab === "preview"
+                  ? "bg-blue-500 text-white shadow-xs"
+                  : "text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+              }`}
+            >
+              Rich Preview
+            </button>
+          </div>
+        )}
+
         {/* EDIT PANE */}
-        {(viewMode === "edit" || viewMode === "split") && (
+        {(viewMode === "edit" || (viewMode === "split" && (!isMobile || mobileSubTab === "edit"))) && (
           <div
-            style={{ width: viewMode === "split" ? `${splitPercentage}%` : "100%", flexGrow: viewMode === "split" ? 0 : 1, flexShrink: 0 }}
+            style={{ width: (viewMode === "split" && !isMobile) ? `${splitPercentage}%` : "100%", flexGrow: (viewMode === "split" && !isMobile) ? 0 : 1, flexShrink: 0 }}
             className="h-full flex flex-col p-6 overflow-hidden relative"
           >
             {note.isLocked && (
@@ -1724,14 +2290,17 @@ export default function EditorArea({
             <textarea
               id="note-editor-textarea"
               ref={textareaRef}
-              value={note.content}
+              value={localContent}
               onChange={handleTextareaChange}
               onKeyDown={handleTextareaKeyDown}
+              onSelect={checkSelectionStyles}
+              onKeyUp={checkSelectionStyles}
+              onMouseUp={checkSelectionStyles}
               readOnly={note.isLocked}
-              className={`w-full flex-grow resize-none border-none outline-none focus:ring-0 text-[14.5px] leading-relaxed font-mono placeholder:italic ${
+              className={`w-full flex-grow resize-none border-none outline-none focus:ring-0 font-mono placeholder:italic ${
                 note.isLocked ? "opacity-65 cursor-not-allowed" : ""
-              } ${
-                theme === "dark" ? "text-zinc-300 placeholder-zinc-600" : "text-slate-800 placeholder-slate-400"
+              } ${fontSizeClass} ${lineWrappingClass} ${
+                theme === "dark" ? "text-zinc-300 placeholder-zinc-650 bg-transparent" : "text-slate-800 placeholder-slate-400 bg-transparent"
               }`}
               placeholder="Start writing your next masterpiece here..."
             />
@@ -1777,7 +2346,7 @@ export default function EditorArea({
         )}
 
         {/* Draggable Divider for split view */}
-        {viewMode === "split" && (
+        {viewMode === "split" && !isMobile && (
           <div
             className="w-1.5 h-full hover:bg-blue-500/20 active:bg-blue-500/40 cursor-col-resize transition-colors flex-shrink-0 select-none flex items-center justify-center relative group"
             onMouseDown={handleDividerMouseDown}
@@ -1787,9 +2356,9 @@ export default function EditorArea({
         )}
 
         {/* PREVIEW PANE */}
-        {(viewMode === "preview" || viewMode === "split") && (
+        {(viewMode === "preview" || (viewMode === "split" && (!isMobile || mobileSubTab === "preview"))) && (
           <div
-            style={{ width: viewMode === "split" ? `${100 - splitPercentage}%` : "100%", flexGrow: viewMode === "split" ? 0 : 1, flexShrink: 0 }}
+            style={{ width: (viewMode === "split" && !isMobile) ? `${100 - splitPercentage}%` : "100%", flexGrow: (viewMode === "split" && !isMobile) ? 0 : 1, flexShrink: 0 }}
             className="h-full overflow-y-auto bg-slate-50/20 dark:bg-zinc-950/10"
           >
             {renderRichPreview()}
@@ -1884,7 +2453,7 @@ export default function EditorArea({
 
       {/* Bottom Status Bar */}
       {!isFocusMode && (
-        <div className={`px-6 py-2 border-t flex items-center justify-between text-xs select-none ${
+        <div className={`px-6 py-2 border-t hidden md:flex items-center justify-between text-xs select-none ${
           theme === "dark"
             ? "border-zinc-800/80 bg-[#09090b] text-zinc-500"
             : "border-slate-200/60 bg-[#FAFAFC] text-slate-400"
@@ -1896,11 +2465,64 @@ export default function EditorArea({
             <span className="flex items-center gap-1">
               <span className="font-semibold text-slate-700 dark:text-zinc-400">{note.readingTime}</span> min read
             </span>
+
+            <span className="h-3 w-px bg-slate-200 dark:bg-zinc-850"></span>
+
+            {/* Status Badge */}
+            <span
+              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider select-none flex-shrink-0 ${
+                note.isTrashed
+                  ? "bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
+                  : note.isArchived
+                  ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400"
+                  : note.status === "Published"
+                  ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                  : note.status === "In Review"
+                  ? "bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
+                  : "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400"
+              }`}
+            >
+              {note.isTrashed ? "Trashed" : note.isArchived ? "Archived" : note.status || "Draft"}
+            </span>
+
+            <span className="h-3 w-px bg-slate-200 dark:bg-zinc-850"></span>
+
+            {/* Auto save indicator / Manual save button */}
+            {settings?.autoSave === false ? (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`text-[10px] font-mono font-medium ${
+                  note.content !== localContent ? "text-amber-500 animate-pulse animate-duration-1000" : "text-slate-400 dark:text-zinc-500"
+                }`}>
+                  {note.content !== localContent ? "Unsaved" : "Saved"}
+                </span>
+                {note.content !== localContent && (
+                  <button
+                    onClick={handleManualSave}
+                    className="px-1.5 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-[9px] font-bold transition-all shadow-xs cursor-pointer"
+                    title="Save changes (Ctrl+S)"
+                  >
+                    Save
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500 font-mono flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>{isSaving ? "Saving..." : "Synced"}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4 font-mono text-[10.5px]">
-            <span>Category: <strong>{note.folder}</strong></span>
-            <span>Tags: <strong>{note.tags.join(", ") || "(None)"}</strong></span>
+            <span>Category: <strong>{folderName}</strong></span>
+            <span>
+              Tags: <strong>
+                {note.tags.length === 0
+                  ? "None"
+                  : note.tags[0] + (note.tags.length > 1 ? ` +${note.tags.length - 1}` : "")
+                }
+              </strong>
+            </span>
             <span>Modified: {new Date(note.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
         </div>

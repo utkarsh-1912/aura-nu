@@ -8,8 +8,45 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultFolder: "General",
   shortcutsEnabled: true,
   enableNotifications: true,
+  lineWrapping: true,
+  showLineNumbers: true,
 };
-
+export const getCleanInitialWorkspaces = (userEmail: string): Workspace[] => {
+  const userName = userEmail.split("@")[0];
+  const capitalized = userName.charAt(0).toUpperCase() + userName.slice(1);
+  return [
+    {
+      id: "ws-personal",
+      name: `${capitalized}'s Space`,
+      type: "Personal",
+      icon: "User",
+      role: "Owner",
+      isPinned: true,
+      isFavorite: false,
+      storageUsage: 0,
+      storageQuota: 10,
+      settings: {
+        theme: "light",
+        fontSize: "base",
+        autoSave: true,
+        aiModel: "gemini-3.5-flash",
+        defaultFolder: "General",
+        shortcutsEnabled: true,
+        enableNotifications: true,
+      },
+      members: [
+        { id: "m-1", name: capitalized, email: userEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0] }
+      ],
+      templates: [],
+      integrations: [],
+      sharedLinks: [],
+      invitations: [],
+      auditLogs: [],
+      departments: [],
+      aiHistory: []
+    }
+  ];
+};
 export const INITIAL_WORKSPACES: Workspace[] = [
   {
     id: "ws-aura-core",

@@ -40,6 +40,9 @@ interface NotesListProps {
   onBulkRestoreNotes?: (noteIds: string[]) => void;
   onEmptyTrash?: () => void;
   width?: number;
+  onTogglePinNote?: (id: string) => void;
+  onToggleFavoriteNote?: (id: string) => void;
+  onDeleteNote?: (id: string) => void;
 }
 
 // Strip markdown syntax to generate a beautiful plain-text preview excerpt
@@ -100,6 +103,9 @@ export default function NotesList({
   onBulkRestoreNotes,
   onEmptyTrash,
   width,
+  onTogglePinNote,
+  onToggleFavoriteNote,
+  onDeleteNote,
 }: NotesListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<"updatedAt" | "title">("updatedAt");
@@ -143,6 +149,15 @@ export default function NotesList({
     setLastClickedId(null);
     setIsMultiSelectMode(false);
   }, [activeFolder, activeTag]);
+
+  const folderHeading = useMemo(() => {
+    if (!activeFolder) return "All Notes";
+    if (["All Notes", "Pinned", "Favorites", "Shared", "Drafts", "Published", "Archived", "Trash"].includes(activeFolder)) {
+      return activeFolder;
+    }
+    const found = folders.find(f => f.id === activeFolder);
+    return found ? found.name : activeFolder;
+  }, [activeFolder, folders]);
 
   // Step 1: Filter notes by Folder, Tag, and search query
   const filteredNotes = useMemo(() => {
@@ -425,8 +440,52 @@ export default function NotesList({
             )}
           </div>
 
-          {/* Badges indicators */}
-          <div className="flex items-center gap-1.5 opacity-70">
+          {/* Action buttons (interactive hover menu) */}
+          <div className="flex items-center gap-1 group-hover:opacity-100 opacity-0 transition-opacity duration-155 relative z-20">
+            {onTogglePinNote && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePinNote(note.id);
+                }}
+                title={note.isPinned ? "Unpin Note" : "Pin Note"}
+                className={`p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
+                  note.isPinned ? "text-amber-500" : "text-slate-400 dark:text-zinc-550 hover:text-slate-700 dark:hover:text-zinc-200"
+                }`}
+              >
+                <Pin size={11} className={note.isPinned ? "fill-amber-500 text-amber-500" : ""} />
+              </button>
+            )}
+            {onToggleFavoriteNote && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavoriteNote(note.id);
+                }}
+                title={note.isFavorite ? "Unstar Note" : "Star Note"}
+                className={`p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
+                  note.isFavorite ? "text-rose-500" : "text-slate-400 dark:text-zinc-550 hover:text-slate-700 dark:hover:text-zinc-200"
+                }`}
+              >
+                <Star size={11} className={note.isFavorite ? "fill-rose-500 text-rose-500" : ""} />
+              </button>
+            )}
+            {onDeleteNote && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteNote(note.id);
+                }}
+                title="Move to Trash"
+                className="p-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-955/20 text-slate-400 dark:text-zinc-550 hover:text-rose-500 dark:hover:text-rose-400 transition-colors cursor-pointer"
+              >
+                <Trash2 size={11} />
+              </button>
+            )}
+          </div>
+
+          {/* Static badges indicators (visible when NOT hovered) */}
+          <div className="flex items-center gap-1.5 opacity-70 group-hover:hidden">
             {note.isPinned && <Pin size={11} className="text-amber-500 fill-amber-500/20" />}
             {note.isShared && <Share2 size={11} className="text-indigo-500" />}
             {note.isFavorite && <Star size={11} className="text-yellow-500 fill-yellow-500/20" />}
@@ -452,7 +511,7 @@ export default function NotesList({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h2 className="font-display font-semibold text-base tracking-tight text-slate-900 dark:text-zinc-100">
-              {activeFolder}
+              {folderHeading}
             </h2>
             {activeTag && (
               <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-500 border border-blue-500/20">

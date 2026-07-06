@@ -11,7 +11,7 @@ import TrashView from "../components/views/TrashView";
 import ArchiveView from "../components/views/ArchiveView";
 
 import { Note, Settings, Reminder, Activity, Workspace, WorkspaceType, Folder } from "../types";
-import { INITIAL_WORKSPACES, INITIAL_NOTES, INITIAL_REMINDERS, INITIAL_ACTIVITIES, DEFAULT_SETTINGS } from "../data";
+import { INITIAL_WORKSPACES, INITIAL_NOTES, INITIAL_REMINDERS, INITIAL_ACTIVITIES, DEFAULT_SETTINGS, getCleanInitialWorkspaces } from "../data";
 import {
   Sparkles,
   X,
@@ -405,8 +405,8 @@ export default function WorkspacePage({
     // Reset tags on load
     setActiveTag(null);
 
-    // Load local workspaces or use INITIAL_WORKSPACES
-    let localWorkspaces = INITIAL_WORKSPACES;
+    // Load local workspaces or bootstrap dynamically
+    let localWorkspaces = getCleanInitialWorkspaces(userEmail);
     const wsStr = localStorage.getItem(`aura-workspaces-${userEmail}`);
     if (wsStr) {
       try {
@@ -414,6 +414,8 @@ export default function WorkspacePage({
       } catch (e) {
         console.error(e);
       }
+    } else {
+      localStorage.setItem(`aura-workspaces-${userEmail}`, JSON.stringify(localWorkspaces));
     }
 
     // Dynamically replace hardcoded email references with active user email
@@ -523,20 +525,20 @@ export default function WorkspacePage({
       try {
         setReminders(JSON.parse(localReminders));
       } catch {
-        setReminders(INITIAL_REMINDERS);
+        setReminders([]);
       }
     } else {
-      setReminders(INITIAL_REMINDERS);
+      setReminders([]);
     }
 
     if (localActivities) {
       try {
         setActivities(JSON.parse(localActivities));
       } catch {
-        setActivities(INITIAL_ACTIVITIES);
+        setActivities([]);
       }
     } else {
-      setActivities(INITIAL_ACTIVITIES);
+      setActivities([]);
     }
 
     if (localSettings) {
@@ -1433,7 +1435,7 @@ export default function WorkspacePage({
 
       {/* MOBILE PORT LAYOUT */}
       {isMobile ? (
-        <div id="mobile-viewport" className="flex-grow w-full h-full flex flex-col overflow-hidden pb-16">
+        <div id="mobile-viewport" className={`flex-grow w-full h-full flex flex-col overflow-hidden ${(activeNoteId && mobileTab === "notes") ? "pb-0" : "pb-16"}`}>
           <header className={`px-4 py-3.5 border-b flex items-center justify-between select-none ${
             activeTheme === "dark" ? "bg-zinc-950/80 border-zinc-850" : "bg-white/80 border-slate-200"
           }`}>
@@ -1595,6 +1597,9 @@ export default function WorkspacePage({
                   onBulkDeletePermanently={handleBulkDeletePermanently}
                   onBulkRestoreNotes={handleBulkRestoreNotes}
                   onEmptyTrash={handleEmptyTrash}
+                  onTogglePinNote={handleTogglePinNote}
+                  onToggleFavoriteNote={handleToggleFavoriteNote}
+                  onDeleteNote={handleDeleteNote}
                 />
               ) : (
                 <EditorArea
@@ -1615,6 +1620,7 @@ export default function WorkspacePage({
                   folders={workspaceFolders}
                   isFocusMode={isFocusMode}
                   setIsFocusMode={setIsFocusMode}
+                  settings={settings}
                 />
               )
             )}
@@ -1711,9 +1717,10 @@ export default function WorkspacePage({
             </div>
           )}
 
-          <nav className={`fixed bottom-0 left-0 right-0 h-16 border-t flex items-center justify-around z-30 shadow-md ${
-            activeTheme === "dark" ? "bg-[#141416]/95 border-zinc-850" : "bg-white/95 border-slate-200"
-          }`}>
+          {(!activeNoteId || mobileTab !== "notes") && (
+            <nav className={`fixed bottom-0 left-0 right-0 h-16 border-t flex items-center justify-around z-30 shadow-md ${
+              activeTheme === "dark" ? "bg-[#141416]/95 border-zinc-850" : "bg-white/95 border-slate-200"
+            }`}>
             {[
               { id: "home", label: "Home", icon: Home },
               { id: "notes", label: "Notes", icon: FileText },
@@ -1742,6 +1749,7 @@ export default function WorkspacePage({
               );
             })}
           </nav>
+          )}
         </div>
       ) : (
         /* DESKTOP / TABLET LAYOUT */
@@ -1803,6 +1811,9 @@ export default function WorkspacePage({
               onBulkRestoreNotes={handleBulkRestoreNotes}
               onEmptyTrash={handleEmptyTrash}
               width={notesListWidth}
+              onTogglePinNote={handleTogglePinNote}
+              onToggleFavoriteNote={handleToggleFavoriteNote}
+              onDeleteNote={handleDeleteNote}
             />
           )}
 
@@ -1919,6 +1930,7 @@ export default function WorkspacePage({
                 folders={workspaceFolders}
                 isFocusMode={isFocusMode}
                 setIsFocusMode={setIsFocusMode}
+                settings={settings}
               />
             )}
 
@@ -2061,6 +2073,7 @@ export default function WorkspacePage({
         theme={theme}
         setTheme={setTheme}
         currentUserEmail={userEmail}
+        notes={notes}
       />
 
       {/* 4. COMMAND PALETTE SPOTLIGHT MODAL */}

@@ -33,6 +33,7 @@ interface SettingsModalProps {
   theme: "light" | "dark" | "system";
   setTheme: (theme: "light" | "dark" | "system") => void;
   currentUserEmail: string;
+  notes?: any[];
 }
 
 type TabType =
@@ -56,19 +57,37 @@ export default function SettingsModal({
   theme,
   setTheme,
   currentUserEmail,
+  notes = [],
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>("appearance");
 
   // Local state extensions for all the new features
-  const [language, setLanguage] = useState("en");
-  const [soundAlerts, setSoundAlerts] = useState(true);
-  const [desktopNotif, setDesktopNotif] = useState(true);
-  const [newsletterAlerts, setNewsletterAlerts] = useState(false);
+  const [language, setLanguage] = useState(() => {
+    return localStorage.getItem(`aura-language-${currentUserEmail}`) || "en";
+  });
+  const [soundAlerts, setSoundAlerts] = useState(() => {
+    const saved = localStorage.getItem(`aura-soundAlerts-${currentUserEmail}`);
+    return saved !== null ? saved === "true" : true;
+  });
+  const [desktopNotif, setDesktopNotif] = useState(() => {
+    const saved = localStorage.getItem(`aura-desktopNotif-${currentUserEmail}`);
+    return saved !== null ? saved === "true" : true;
+  });
+  const [newsletterAlerts, setNewsletterAlerts] = useState(() => {
+    const saved = localStorage.getItem(`aura-newsletterAlerts-${currentUserEmail}`);
+    return saved === "true";
+  });
   
   const [aiModel, setAiModel] = useState(settings.aiModel || "gemini-3.5-flash");
-  const [aiTemperature, setAiTemperature] = useState(0.7);
+  const [aiTemperature, setAiTemperature] = useState(() => {
+    const saved = localStorage.getItem(`aura-aiTemperature-${currentUserEmail}`);
+    return saved !== null ? parseFloat(saved) : 0.7;
+  });
   
-  const [twoFactorActive, setTwoFactorActive] = useState(false);
+  const [twoFactorActive, setTwoFactorActive] = useState(() => {
+    const saved = localStorage.getItem(`aura-twoFactorActive-${currentUserEmail}`);
+    return saved === "true";
+  });
   const [isSyncingNow, setIsSyncingNow] = useState(false);
 
   // API key generator state
@@ -91,6 +110,54 @@ export default function SettingsModal({
     }
     return theme;
   }, [theme]);
+
+  const storageUsed = React.useMemo(() => {
+    return (notes.reduce((acc, note) => acc + (note.content?.length || 0), 0) / 1024).toFixed(2); // KB
+  }, [notes]);
+
+  const storagePercentage = React.useMemo(() => {
+    return Math.min((parseFloat(storageUsed) / 5120) * 100, 100).toFixed(1);
+  }, [storageUsed]);
+
+  const currentBrowser = React.useMemo(() => {
+    const ua = navigator.userAgent;
+    if (ua.includes("Chrome") && !ua.includes("Chromium") && !ua.includes("Edg")) return "Chrome";
+    if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari";
+    if (ua.includes("Firefox")) return "Firefox";
+    if (ua.includes("Edg")) return "Edge";
+    return "Web Browser";
+  }, []);
+
+  const currentOS = React.useMemo(() => {
+    const ua = navigator.userAgent;
+    if (ua.includes("Windows")) return "Windows";
+    if (ua.includes("Macintosh") || ua.includes("Mac OS X")) return "macOS";
+    if (ua.includes("Linux")) return "Linux";
+    if (ua.includes("Android")) return "Android";
+    if (ua.includes("iPhone") || ua.includes("iPad")) return "iOS";
+    return "Desktop Client";
+  }, []);
+
+  const [integrations, setIntegrations] = useState<{ [key: string]: boolean }>(() => {
+    const saved = localStorage.getItem(`aura-integrations-${currentUserEmail}`);
+    return saved ? JSON.parse(saved) : {
+      "Google Drive Backup": true,
+      "Slack Communications": false,
+      "GitHub Repository Sync": false
+    };
+  });
+
+  const toggleIntegration = (name: string) => {
+    const updated = { ...integrations, [name]: !integrations[name] };
+    setIntegrations(updated);
+    localStorage.setItem(`aura-integrations-${currentUserEmail}`, JSON.stringify(updated));
+  };
+
+  const nextRenewalDate = React.useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }, []);
 
   if (!isOpen) return null;
 
@@ -314,6 +381,24 @@ export default function SettingsModal({
                       }`}></div>
                     </button>
                   </div>
+
+                  {/* Line Wrapping Toggle */}
+                  <div className="flex justify-between items-center pt-3 border-t border-slate-100/50 dark:border-zinc-800/40">
+                    <div>
+                      <h4 className="font-semibold text-xs text-slate-900 dark:text-zinc-100">Enable Line Wrapping</h4>
+                      <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Wrap lines to the viewport width instead of horizontal overflow scrolling.</p>
+                    </div>
+                    <button
+                      onClick={() => onUpdateSettings({ ...settings, lineWrapping: !settings.lineWrapping })}
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
+                        settings.lineWrapping ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
+                      }`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
+                        settings.lineWrapping ? "translate-x-4" : "translate-x-0"
+                      }`}></div>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -356,7 +441,11 @@ export default function SettingsModal({
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500">Play delicate ambient microtones on sync success or timer expirations.</p>
                   </div>
                   <button
-                    onClick={() => setSoundAlerts(!soundAlerts)}
+                    onClick={() => {
+                      const next = !soundAlerts;
+                      setSoundAlerts(next);
+                      localStorage.setItem(`aura-soundAlerts-${currentUserEmail}`, String(next));
+                    }}
                     className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
                       soundAlerts ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
                     }`}
@@ -373,7 +462,11 @@ export default function SettingsModal({
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500">Show notification banner on your primary operating system window.</p>
                   </div>
                   <button
-                    onClick={() => setDesktopNotif(!desktopNotif)}
+                    onClick={() => {
+                      const next = !desktopNotif;
+                      setDesktopNotif(next);
+                      localStorage.setItem(`aura-desktopNotif-${currentUserEmail}`, String(next));
+                    }}
                     className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
                       desktopNotif ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
                     }`}
@@ -390,7 +483,11 @@ export default function SettingsModal({
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500">Receive weekly emails on high productivity workflows or strategy blueprints.</p>
                   </div>
                   <button
-                    onClick={() => setNewsletterAlerts(!newsletterAlerts)}
+                    onClick={() => {
+                      const next = !newsletterAlerts;
+                      setNewsletterAlerts(next);
+                      localStorage.setItem(`aura-newsletterAlerts-${currentUserEmail}`, String(next));
+                    }}
                     className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
                       newsletterAlerts ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
                     }`}
@@ -412,11 +509,11 @@ export default function SettingsModal({
                     Volume Telemetry (Sync Center)
                   </h4>
                   <p className="text-[11px] text-slate-400 dark:text-zinc-500">Notes are synchronized back to the Cloud Run Express storage databases.</p>
-                  <div className="w-full h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: "2%" }}></div>
+                   <div className="w-full h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${storagePercentage}%` }}></div>
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                    <span>Current usage: ~12 KB</span>
+                    <span>Current usage: ~{storageUsed} KB</span>
                     <span>Total free allotment: 5.0 MB</span>
                   </div>
                 </div>
@@ -453,7 +550,11 @@ export default function SettingsModal({
                     <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Prompt for a 6-digit PIN on authentication to secure note logs.</p>
                   </div>
                   <button
-                    onClick={() => setTwoFactorActive(!twoFactorActive)}
+                    onClick={() => {
+                      const next = !twoFactorActive;
+                      setTwoFactorActive(next);
+                      localStorage.setItem(`aura-twoFactorActive-${currentUserEmail}`, String(next));
+                    }}
                     className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
                       twoFactorActive ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
                     }`}
@@ -474,8 +575,8 @@ export default function SettingsModal({
                         <th className="p-2">Status</th>
                       </tr>
                       <tr className="hover:bg-slate-50/20 text-slate-600 dark:text-zinc-300">
-                        <td className="p-2 font-sans font-medium">Brave Browser (macOS)</td>
-                        <td className="p-2">192.168.1.104 (Current)</td>
+                        <td className="p-2 font-sans font-medium">{currentBrowser} Browser ({currentOS})</td>
+                        <td className="p-2">127.0.0.1 (Current)</td>
                         <td className="p-2 text-emerald-500 font-bold">Active Now</td>
                       </tr>
                       <tr className="hover:bg-slate-50/20 text-slate-400">
@@ -496,7 +597,11 @@ export default function SettingsModal({
                   <label className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Generative Model Engine</label>
                   <select
                     value={aiModel}
-                    onChange={(e) => setAiModel(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAiModel(val);
+                      onUpdateSettings({ ...settings, aiModel: val });
+                    }}
                     className={`w-full px-3 py-2 rounded-xl border outline-none text-xs font-semibold ${
                       activeTheme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
                     }`}
@@ -518,7 +623,11 @@ export default function SettingsModal({
                     max="1.2"
                     step="0.1"
                     value={aiTemperature}
-                    onChange={(e) => setAiTemperature(parseFloat(e.target.value))}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setAiTemperature(val);
+                      localStorage.setItem(`aura-aiTemperature-${currentUserEmail}`, String(val));
+                    }}
                     className="w-full h-1 bg-slate-200 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
@@ -531,35 +640,41 @@ export default function SettingsModal({
                 <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-2">Connect third-party enterprise tools to sync notes directly as task tickets or specs.</p>
                 
                 {[
-                  { name: "Google Drive Backup", desc: "Automate raw PDF export formats into private storage folders.", status: "Connected", icon: HardDrive },
-                  { name: "Slack Communications", desc: "Broadcast generated board minutes and summaries to selected channels.", status: "Disconnected", icon: Link },
-                  { name: "GitHub Repository Sync", desc: "Commit markdown document files straight to codebases on save.", status: "Disconnected", icon: Key },
-                ].map((item, i) => (
-                  <div
-                    key={i}
-                    className={`p-3 rounded-xl border flex items-center justify-between ${
-                      activeTheme === "dark" ? "bg-zinc-950/40 border-zinc-800" : "bg-slate-50 border-slate-100"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                        <item.icon size={13} />
+                  { name: "Google Drive Backup", desc: "Automate raw PDF export formats into private storage folders.", icon: HardDrive },
+                  { name: "Slack Communications", desc: "Broadcast generated board minutes and summaries to selected channels.", icon: Link },
+                  { name: "GitHub Repository Sync", desc: "Commit markdown document files straight to codebases on save.", icon: Key },
+                ].map((item, i) => {
+                  const isConnected = !!integrations[item.name];
+                  return (
+                    <div
+                      key={i}
+                      className={`p-3 rounded-xl border flex items-center justify-between ${
+                        activeTheme === "dark" ? "bg-zinc-950/40 border-zinc-800" : "bg-slate-50 border-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
+                          <item.icon size={13} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-900 dark:text-zinc-200">{item.name}</span>
+                          <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-900 dark:text-zinc-200">{item.name}</span>
-                        <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</span>
-                      </div>
-                    </div>
 
-                    <button className={`px-2.5 py-1 text-[10px] font-bold rounded-lg cursor-pointer ${
-                      item.status === "Connected"
-                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                        : "bg-slate-950 text-white dark:bg-white dark:text-zinc-950"
-                    }`}>
-                      {item.status === "Connected" ? "Linked" : "Connect"}
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        onClick={() => toggleIntegration(item.name)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded-lg cursor-pointer ${
+                          isConnected
+                            ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                            : "bg-slate-950 text-white dark:bg-white dark:text-zinc-950"
+                        }`}
+                      >
+                        {isConnected ? "Linked" : "Connect"}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -577,7 +692,7 @@ export default function SettingsModal({
 
                   <div className="flex justify-between text-xs pt-2 border-t border-white/20 text-blue-100">
                     <span>Re-bills Monthly ($12/mo)</span>
-                    <span>Next renewal: Aug 12, 2026</span>
+                    <span>Next renewal: {nextRenewalDate}</span>
                   </div>
                 </div>
 
