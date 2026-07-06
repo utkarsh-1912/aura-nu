@@ -1,6 +1,6 @@
-# Aura Notes — Premium Enterprise Workspace
+# Aura Next — Premium Enterprise Workspace
 
-Aura Notes is a generative, secure, offline-first, and highly integrated note-taking platform designed for deep thinkers and enterprise teams. Built with a compact and elegant design inspired by Apple Notes, Aura integrates Google Gemini AI models directly into your workspace workflow.
+Aura Next is a generative, secure, offline-first, and highly integrated note-taking platform designed for deep thinkers and enterprise teams. Built with a compact and elegant design inspired by Apple Notes, Aura integrates Google Gemini AI models directly into your workspace workflow.
 
 ---
 

@@ -51,7 +51,7 @@ export default function TermsPage({ theme }: TermsPageProps) {
           theme === "dark" ? "text-zinc-300" : "text-slate-700"
         }`}>
           <p className="text-sm">
-            Welcome to Aura Notes. By accessing our services, creating workspaces, or utilizing our Generative 
+            Welcome to Aura Next. By accessing our services, creating workspaces, or utilizing our Generative 
             Assistant nodes, you agree to comply with the terms detailed herein.
           </p>
 
@@ -63,7 +63,7 @@ export default function TermsPage({ theme }: TermsPageProps) {
               1. Usage Rights & Workspace Boundaries
             </h2>
             <p>
-              We grant you a personal, non-exclusive, non-transferable license to access Aura Notes. 
+              We grant you a personal, non-exclusive, non-transferable license to access Aura Next. 
               Each tenant is allocated private storage limits (e.g. 5MB quota) to index metadata and files. 
               Attempting to bypass storage quotas or interfere with other tenant isolation nodes is strictly prohibited.
             </p>
@@ -86,7 +86,7 @@ export default function TermsPage({ theme }: TermsPageProps) {
               3. Disclaimer of Warranties
             </h2>
             <p>
-              Aura Notes is provided "as is" and "as available". We do not guarantee uninterrupted, secure, or bug-free operations. 
+              Aura Next is provided "as is" and "as available". We do not guarantee uninterrupted, secure, or bug-free operations. 
               In no event shall Aura Inc. be liable for any data loss, server downtime, or loss of proprietary metadata.
             </p>
           </section>

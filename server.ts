@@ -49,12 +49,12 @@ if (geminiApiKey) {
   });
 }
 
-// Initial default notes to showcase the beauty and capabilities of Aura Notes
+// Initial default notes to showcase the beauty and capabilities of Aura Next
 const DEFAULT_NOTES = [
   {
     id: "welcome-note",
-    title: "✨ Welcome to Aura Notes",
-    content: `# Welcome to Aura Notes\n\nAura Notes is a luxurious, minimalist, enterprise-grade note-taking workspace designed for professionals who appreciate simplicity, design, and intelligent assistance.\n\n### Core Features:\n- **Clean Layout**: Sidebars, real-time searchable list, and beautiful editor area.\n- **Keyboard Shortcuts**: Work faster with native commands.\n- **Aesthetic Pairings**: Styled with the Inter & JetBrains Mono font faces, frosted glass layers, and micro-animations.\n- **Embedded Table Component**: Insert and edit rich tabular data within notes.\n- **Interactive AI Assistant**: Summarize, translate, rewrite, extract action items, and chat directly in context.\n\n*Aura is offline-first and automatically synchronized with the server.*`,
+    title: "✨ Welcome to Aura Next",
+    content: `# Welcome to Aura Next\n\nAura Next is a luxurious, minimalist, enterprise-grade note-taking workspace designed for professionals who appreciate simplicity, design, and intelligent assistance.\n\n### Core Features:\n- **Clean Layout**: Sidebars, real-time searchable list, and beautiful editor area.\n- **Keyboard Shortcuts**: Work faster with native commands.\n- **Aesthetic Pairings**: Styled with the Inter & JetBrains Mono font faces, frosted glass layers, and micro-animations.\n- **Embedded Table Component**: Insert and edit rich tabular data within notes.\n- **Interactive AI Assistant**: Summarize, translate, rewrite, extract action items, and chat directly in context.\n\n*Aura is offline-first and automatically synchronized with the server.*`,
     tags: ["Onboarding", "Guides", "Enterprise"],
     isPinned: true,
     isShared: false,
@@ -320,7 +320,7 @@ app.post("/api/ai/action", async (req, res) => {
 
   try {
     let prompt = "";
-    let systemInstruction = "You are a highly sophisticated, minimalist AI writing assistant built into Aura Notes (an enterprise productivity app). Provide clear, beautiful markdown outputs. Avoid fluff, unnecessary warnings, or repeating yourself. Keep answers crisp and highly structured.";
+    let systemInstruction = "You are a highly sophisticated, minimalist AI writing assistant built into Aura Next (an enterprise productivity app). Provide clear, beautiful markdown outputs. Avoid fluff, unnecessary warnings, or repeating yourself. Keep answers crisp and highly structured.";
 
     switch (action) {
       case "summarize":
