@@ -1489,17 +1489,6 @@ export default function WorkspacePage({
                     activeTheme === "dark" ? "bg-zinc-950 text-zinc-100 border-zinc-800" : "bg-white text-slate-800 border-slate-200"
                   }`}
                 >
-                  {/* Header with Close */}
-                  <div className="p-3 border-b flex items-center justify-between">
-                    <span className="font-display font-bold text-xs tracking-tight text-slate-400 dark:text-zinc-500 uppercase">Aura Navigation</span>
-                    <button
-                      onClick={() => setIsMobileSidebarOpen(false)}
-                      className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-850 text-slate-500 cursor-pointer"
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                  
                   {/* Sidebar Component */}
                   <div className="flex-grow overflow-y-auto" onClick={() => setIsMobileSidebarOpen(false)}>
                     <Sidebar
