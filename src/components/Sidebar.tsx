@@ -752,7 +752,7 @@ export default function Sidebar({
       )}
 
       {/* Workspace Switcher */}
-      <div id="workspace-switcher-section" className="py-2 px-4 flex flex-col gap-2 border-b border-slate-100/40 dark:border-zinc-800/40">
+      <div id="workspace-switcher-section" className="p-2 flex flex-col gap-2 border-b border-slate-100/40 dark:border-zinc-800/40">
         <div ref={workspaceMenuRef} className="relative">
           <button
             id="workspace-dropdown-btn"

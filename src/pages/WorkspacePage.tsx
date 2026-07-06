@@ -1408,9 +1408,7 @@ export default function WorkspacePage({
   return (
     <div
       id="aura-app-wrapper"
-      className={`w-screen h-screen flex flex-col md:flex-row overflow-hidden font-sans transition-colors duration-200 ${
-        activeTheme === "dark" ? "bg-[#09090b] text-zinc-100" : "bg-[#FAFAFC] text-slate-900"
-      }`}
+      className="w-screen h-screen flex flex-col md:flex-row overflow-hidden font-sans transition-colors duration-200 bg-bg-primary text-text-primary"
     >
       {/* Toast Notification Container */}
       <div id="toast-notifications-rack" className="fixed bottom-20 md:bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">

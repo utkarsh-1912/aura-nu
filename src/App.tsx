@@ -139,15 +139,9 @@ function AppContent() {
   if (loading) {
     const isDark = activeTheme === "dark";
     return (
-      <div className={`w-screen h-screen flex flex-col items-center justify-center font-sans ${
-        isDark ? "bg-[#09090b] text-zinc-100" : "bg-[#FAFAFC] text-slate-900"
-      }`}>
-        <div className={`w-10 h-10 rounded-full border-2 border-t-blue-500 animate-spin mb-4 ${
-          isDark ? "border-zinc-800" : "border-slate-200"
-        }`}></div>
-        <span className={`text-[10px] font-mono tracking-widest uppercase animate-pulse ${
-          isDark ? "text-zinc-500" : "text-slate-400"
-        }`}>
+      <div className="w-screen h-screen flex flex-col items-center justify-center font-sans bg-bg-primary text-text-primary">
+        <div className="w-10 h-10 rounded-full border-2 border-t-blue-500 animate-spin mb-4 border-border-primary"></div>
+        <span className="text-[10px] font-mono tracking-widest uppercase animate-pulse text-text-secondary">
           Aura Initializing...
         </span>
       </div>

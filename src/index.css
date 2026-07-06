@@ -1,6 +1,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+:root {
+  --bg-primary: #FAFAFC;
+  --bg-secondary: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border-primary: rgba(226, 232, 240, 0.6);
+}
+
+.dark {
+  --bg-primary: #09090b;
+  --bg-secondary: #18181b;
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --border-primary: rgba(39, 39, 42, 0.8);
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: "Outfit", sans-serif;
@@ -16,6 +32,13 @@
 
   /* Custom zinc-850 color variable for dark theme */
   --color-zinc-850: #202023;
+
+  /* Variable-based theme colors */
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-border-primary: var(--border-primary);
 }
 
 /* Base resets & custom scrollbars */
@@ -23,6 +46,8 @@
   body {
     @apply font-sans text-[15px] leading-relaxed antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
   }
 
   /* Custom glassmorphism classes */

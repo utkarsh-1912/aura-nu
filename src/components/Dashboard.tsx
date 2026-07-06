@@ -554,10 +554,10 @@ export default function Dashboard({
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
                     <Clock size={15} className="text-blue-500" />
-                    Isolated Documents
+                    Documents
                   </h3>
                   <span className="text-[10px] font-mono text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-900 px-2.5 py-1 rounded-md">
-                    Isolate count: {recentNotes.length} files
+                    {recentNotes.length} files
                   </span>
                 </div>
 
