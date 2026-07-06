@@ -483,7 +483,7 @@ export default function Dashboard({
         </div>
 
         {/* Dashboard Sub-navigation Tabs */}
-        <div className="flex gap-1.5 mt-6 border-b border-slate-200/60 dark:border-zinc-800/80 pb-0.5">
+        <div className="flex gap-1.5 mt-6 border-b border-slate-200/60 dark:border-zinc-800/80 pb-0.5 overflow-x-scroll scrollbar-thin scrollbar-thumb-slate-300/40 dark:scrollbar-thumb-zinc-700/40 scrollbar-track-transparent">
           {[
             { id: "overview", label: "Overview", icon: TrendingUp },
             { id: "org", label: "Departments & Projects", icon: Layers },
