@@ -51,7 +51,7 @@ export default function PrivacyPage({ theme }: PrivacyPageProps) {
           theme === "dark" ? "text-zinc-300" : "text-slate-700"
         }`}>
           <p className="text-sm">
-            At Aura Notes, we value your privacy above all. Aura is built with a 
+            At Aura Next, we value your privacy above all. Aura is built with a 
             <strong> zero-compromise encryption architecture</strong>, meaning your files, schemas, and workspace structures 
             remain securely under your control.
           </p>
@@ -64,7 +64,7 @@ export default function PrivacyPage({ theme }: PrivacyPageProps) {
               1. What Information We Collect
             </h2>
             <p>
-              Aura Notes operates primarily as a client-side replicated database. We collect:
+              Aura Next operates primarily as a client-side replicated database. We collect:
             </p>
             <ul className="list-disc list-inside pl-4 space-y-1.5">
               <li><strong>Authentication Data:</strong> User email, display name, and authentication tokens via Firebase.</li>

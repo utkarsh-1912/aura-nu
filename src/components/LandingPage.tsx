@@ -172,7 +172,7 @@ export default function LandingPage({
               <Sparkles size={16} className="animate-pulse" />
             </div>
             <span className="font-display font-bold text-base tracking-tight text-slate-900 dark:text-white">
-              Aura Notes
+              Aura Next
             </span>
           </div>
 
@@ -569,7 +569,7 @@ export default function LandingPage({
                 <Sparkles size={14} />
               </div>
               <span className="font-display font-bold text-sm tracking-tight text-slate-900 dark:text-white">
-                Aura Notes
+                Aura Next
               </span>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-400 dark:text-zinc-500 max-w-xs">
@@ -600,7 +600,7 @@ export default function LandingPage({
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-zinc-300 mb-4">Newsletter</h4>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-3">Join our telemetry for major capabilities updates.</p>
-            <form onSubmit={(e) => { e.preventDefault(); alert("Thanks for joining Aura Notes list!"); }} className="flex gap-1.5">
+            <form onSubmit={(e) => { e.preventDefault(); alert("Thanks for joining Aura Next list!"); }} className="flex gap-1.5">
               <input
                 type="email"
                 placeholder="developer@aura.io"

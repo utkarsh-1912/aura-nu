@@ -141,7 +141,7 @@ export default function OnboardingFlow({
                 Congratulations on configuring your credentials!
               </h1>
               <p className="text-xs text-slate-400 dark:text-zinc-500 leading-relaxed">
-                Welcome to Aura Notes. Before unlocking your redundant document pipeline and Gemini-driven assistants, let's configure your strategic defaults in under 30 seconds.
+                Welcome to Aura Next. Before unlocking your redundant document pipeline and Gemini-driven assistants, let's configure your strategic defaults in under 30 seconds.
               </p>
             </div>
 

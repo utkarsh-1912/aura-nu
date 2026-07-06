@@ -174,6 +174,23 @@ export default function Sidebar({
   const storageLimit = (activeWorkspace?.storageQuota || 5) * 1024; // MB to KB
   const storagePercentage = Math.min((parseFloat(storageUsed) / storageLimit) * 100, 100).toFixed(1);
 
+  const topTags = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeNotes.forEach((note) => {
+      note.tags.forEach((tag) => {
+        counts[tag] = (counts[tag] || 0) + 1;
+      });
+    });
+    const sorted = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag]) => tag);
+    const sliced = sorted.slice(0, 8);
+    if (activeTag && !sliced.includes(activeTag)) {
+      sliced.push(activeTag);
+    }
+    return sliced;
+  }, [activeNotes, activeTag]);
+
   const mainNavItems = [
     { id: "Dashboard", label: "Home", icon: Home, badge: null },
     { id: "All Notes", label: "All Notes", icon: FileText, badge: totalNotesCount },
@@ -723,8 +740,19 @@ export default function Sidebar({
         {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
 
+      {/* Hover Notch for collapsed sidebar */}
+      {isSidebarCollapsed && (
+        <div
+          onClick={() => setIsSidebarCollapsed(false)}
+          className="absolute -right-1.5 top-1/2 -translate-y-1/2 z-30 w-4 h-24 flex items-center justify-end cursor-pointer group"
+          title="Expand Sidebar"
+        >
+          <div className="w-1.5 h-14 rounded-l-lg bg-blue-500/80 group-hover:bg-blue-600 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm mr-0.5"></div>
+        </div>
+      )}
+
       {/* Workspace Switcher */}
-      <div id="workspace-switcher-section" className="p-4 flex flex-col gap-2 border-b border-slate-100/40 dark:border-zinc-800/40">
+      <div id="workspace-switcher-section" className="p-2 flex flex-col gap-2 border-b border-slate-100/40 dark:border-zinc-800/40">
         <div ref={workspaceMenuRef} className="relative">
           <button
             id="workspace-dropdown-btn"
@@ -1003,14 +1031,14 @@ export default function Sidebar({
             </div>
           )
         ) : (
-          tags.length > 0 && (
+          topTags.length > 0 && (
             <div id="tags-section" className="mt-4 px-2">
               <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-1 py-1">
                 <span>Tags</span>
                 <Tag size={11} />
               </div>
               <div className="flex flex-wrap gap-1 mt-1.5 px-1">
-                {tags.map((tag) => {
+                {topTags.map((tag) => {
                   const isSelected = activeTag === tag;
                   return (
                     <button

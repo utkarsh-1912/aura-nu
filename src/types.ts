@@ -54,6 +54,8 @@ export interface Settings {
   defaultFolder: string;
   shortcutsEnabled: boolean;
   enableNotifications: boolean;
+  lineWrapping: boolean;
+  showLineNumbers: boolean;
 }
 
 export interface WorkspaceAnalytics {

@@ -22,9 +22,13 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail, 
-  updateProfile 
+  updateProfile,
+  GoogleAuthProvider,
+  GithubAuthProvider,
+  signInWithPopup
 } from "firebase/auth";
 import { auth, isFirebaseConfigured } from "../firebase";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface AuthFlowProps {
   theme: "light" | "dark";
@@ -39,9 +43,20 @@ export default function AuthFlow({
   onBackToLanding,
   initialFlow = "login",
 }: AuthFlowProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [flow, setFlow] = useState<
     "login" | "register" | "forgot" | "reset" | "verify" | "twofactor" | "magiclink"
   >(initialFlow);
+
+  React.useEffect(() => {
+    if (location.pathname === "/register") {
+      setFlow("register");
+    } else if (location.pathname === "/login") {
+      setFlow("login");
+    }
+  }, [location.pathname]);
 
   // Input states
   const [email, setEmail] = useState("");
@@ -136,106 +151,53 @@ export default function AuthFlow({
         }
       } catch (err: any) {
         setIsLoading(false);
-        setErrorMsg(err.message || "An authentication error occurred.");
+        let msg = err.message || "An authentication error occurred.";
+        if (msg.includes("auth/operation-not-allowed")) {
+          msg = "⚠️ Email/Password sign-in is not enabled in your Firebase Console. Please go to your Firebase project portal > Authentication > Sign-in method, and enable the Email/Password provider.";
+        }
+        setErrorMsg(msg);
       }
       return;
-    }
-
-    // Fallback Simulated Auth Mode
-    setTimeout(() => {
+    } else {
       setIsLoading(false);
-
-      if (flow === "login") {
-        if (!email.includes("@")) {
-          setErrorMsg("Please introduce a valid email address.");
-          return;
-        }
-        if (password.length < 6) {
-          setErrorMsg("Password must be at least 6 characters.");
-          return;
-        }
-        // Redirect to 2-Factor authentication if email is enterprise
-        if (email.includes("enterprise") || email.includes("admin")) {
-          setFlow("twofactor");
-          return;
-        }
-        // Success login
-        onAuthSuccess(email, false);
-      } else if (flow === "register") {
-        if (!name.trim()) {
-          setErrorMsg("Please introduce your full name.");
-          return;
-        }
-        if (!email.includes("@")) {
-          setErrorMsg("Please introduce a valid email address.");
-          return;
-        }
-        if (strengthScore < 2) {
-          setErrorMsg("Please choose a stronger password matching the indicators.");
-          return;
-        }
-        if (!acceptTerms) {
-          setErrorMsg("Please accept our Terms and Privacy Policy first.");
-          return;
-        }
-        // Route to email verification first
-        setFlow("verify");
-      } else if (flow === "forgot") {
-        if (!email.includes("@")) {
-          setErrorMsg("Please introduce a valid email address.");
-          return;
-        }
-        setSuccessMsg("We sent a password reset token to your inbox.");
-        setTimeout(() => setFlow("reset"), 2000);
-      } else if (flow === "reset") {
-        if (password.length < 8) {
-          setErrorMsg("New password must be at least 8 characters long.");
-          return;
-        }
-        setSuccessMsg("Password successfully reset! Proceeding to login.");
-        setTimeout(() => setFlow("login"), 2000);
-      } else if (flow === "verify") {
-        setSuccessMsg("Email successfully verified! Welcome aboard Aura Notes.");
-        setTimeout(() => {
-          onAuthSuccess(email || "sandbox@aura.io", true);
-        }, 1500);
-      } else if (flow === "twofactor") {
-        if (code2fa.length < 6) {
-          setErrorMsg("Please introduce the complete 6-digit MFA code.");
-          return;
-        }
-        setSuccessMsg("Two-Factor code validated successfully!");
-        setTimeout(() => {
-          onAuthSuccess(email || "sandbox@aura.io", false);
-        }, 1200);
-      } else if (flow === "magiclink") {
-        if (!email.includes("@")) {
-          setErrorMsg("Please introduce a valid email address.");
-          return;
-        }
-        setSuccessMsg("A secure Magic Login link has been dispatched to your email!");
-      }
-    }, 1200);
+      setErrorMsg("Firebase Identity Service is not configured. Please define your environment credentials in .env to activate authentication features.");
+    }
   };
 
   const handleBiometricTrigger = () => {
-    setShowBiometrics(true);
-    setBiometricStatus("scanning");
-    setTimeout(() => {
-      setBiometricStatus("success");
-      setTimeout(() => {
-        setShowBiometrics(false);
-        onAuthSuccess("biometrics@aura.io", false);
-      }, 1000);
-    }, 2000);
+    setErrorMsg("Passkey authentication must be configured inside your workspace Settings > Privacy & Security panel first.");
   };
 
-  const triggerSocialLogin = (platform: string) => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onAuthSuccess(`${platform.toLowerCase()}User@aura.io`, false);
-    }, 1000);
+  const triggerSocialLogin = async (platform: string) => {
+    if (isFirebaseConfigured && auth) {
+      setIsLoading(true);
+      setErrorMsg("");
+      try {
+        let provider;
+        if (platform === "Google") {
+          provider = new GoogleAuthProvider();
+        } else if (platform === "GitHub") {
+          provider = new GithubAuthProvider();
+        }
+        if (provider) {
+          const result = await signInWithPopup(auth, provider);
+          if (result.user && result.user.email) {
+            onAuthSuccess(result.user.email, false);
+          }
+        }
+      } catch (err: any) {
+        console.error(`${platform} social login failed:`, err);
+        let msg = err.message || `${platform} authentication failed.`;
+        if (msg.includes("auth/unauthorized-domain")) {
+          msg = `⚠️ This domain (${window.location.hostname}) is not authorized for Firebase OAuth redirects. Please go to your Firebase Console > Authentication > Settings > Authorised domains, and add "${window.location.hostname}" to the list.`;
+        }
+        setErrorMsg(msg);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      setErrorMsg("Firebase Identity Service is not configured. Social login is unavailable.");
+    }
   };
 
   return (
@@ -531,7 +493,7 @@ export default function AuthFlow({
             <p className="text-slate-400">
               Need a professional cluster?{" "}
               <button
-                onClick={() => setFlow("register")}
+                onClick={() => navigate("/register")}
                 className="text-blue-500 font-bold hover:underline cursor-pointer"
               >
                 Create an account
@@ -543,7 +505,7 @@ export default function AuthFlow({
             <p className="text-slate-400">
               Already have a workspace credentials?{" "}
               <button
-                onClick={() => setFlow("login")}
+                onClick={() => navigate("/login")}
                 className="text-blue-500 font-bold hover:underline cursor-pointer"
               >
                 Log in instead

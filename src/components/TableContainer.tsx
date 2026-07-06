@@ -154,7 +154,7 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
               title="Add Column"
             >
               <Plus size={10} />
-              <span>+ Column</span>
+              <span>Column</span>
             </button>
             <button
               onClick={addRow}
@@ -162,25 +162,25 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
               title="Add Row"
             >
               <Plus size={10} />
-              <span>+ Row</span>
+              <span>Row</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Styled Responsive Table */}
-      <div className="w-full overflow-x-auto rounded-lg border border-slate-250/60 dark:border-zinc-800/80 shadow-xs bg-white dark:bg-zinc-950">
+      {/* Styled Minimalist Table */}
+      <div className="w-full overflow-x-auto my-2 border-b border-slate-100 dark:border-zinc-900/50">
         <table className="w-full text-left border-collapse text-[12px] leading-normal table-auto">
           <thead>
-            <tr className="bg-slate-50/80 dark:bg-zinc-900/80 border-b border-slate-200 dark:border-zinc-800">
+            <tr className="border-b border-slate-200 dark:border-zinc-800/80">
               {/* Row Deletion header spacer */}
               {!isLocked && onUpdateTable && (
-                <th className="w-8 px-2 py-1.5 text-center border-r border-slate-200 dark:border-zinc-800 bg-slate-100/40 dark:bg-zinc-900/40"></th>
+                <th className="w-8 px-1 py-2 text-center text-slate-300 dark:text-zinc-650"></th>
               )}
               {headers.map((header, idx) => (
                 <th
                   key={idx}
-                  className="px-3 py-1.5 font-bold text-slate-800 dark:text-zinc-200 border-r border-slate-200 dark:border-zinc-800 last:border-r-0 relative group/cell min-w-[100px]"
+                  className="px-2 py-2 font-semibold text-slate-400 dark:text-zinc-500 relative group/cell min-w-[100px] select-none"
                 >
                   <div className="flex items-center justify-between gap-1.5 min-w-0">
                     <span
@@ -215,15 +215,15 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
             {dataRows.map((rowCells, rIdx) => (
               <tr
                 key={rIdx}
-                className="border-b border-slate-200 dark:border-zinc-850 last:border-b-0 hover:bg-slate-50/20 dark:hover:bg-zinc-900/10 transition-colors"
+                className="border-b border-slate-100 dark:border-zinc-900/50 hover:bg-slate-50/30 dark:hover:bg-zinc-900/10 transition-colors"
               >
                 {/* Row Deletion action cell */}
                 {!isLocked && onUpdateTable && (
-                  <td className="w-8 px-2 py-1.5 text-center border-r border-slate-200 dark:border-zinc-850 bg-slate-100/10 dark:bg-zinc-900/10">
+                  <td className="w-8 px-1 py-2 text-center">
                     {dataRows.length > 1 && (
                       <button
                         onClick={() => deleteRow(rIdx)}
-                        className="p-0.5 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 cursor-pointer inline-flex items-center justify-center transition-all"
+                        className="p-0.5 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 cursor-pointer inline-flex items-center justify-center transition-all"
                         title="Delete Row"
                       >
                         <Trash2 size={10} />
@@ -234,7 +234,7 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
                 {rowCells.map((cell, cIdx) => (
                   <td
                     key={cIdx}
-                    className="px-3 py-1.5 border-r border-slate-200 dark:border-zinc-850 last:border-r-0 relative group/cell"
+                    className="px-2 py-2 text-slate-700 dark:text-zinc-300 relative group/cell"
                   >
                     <div className="flex items-center justify-between gap-1.5 min-w-0">
                       <span

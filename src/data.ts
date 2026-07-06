@@ -8,8 +8,45 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultFolder: "General",
   shortcutsEnabled: true,
   enableNotifications: true,
+  lineWrapping: true,
+  showLineNumbers: true,
 };
-
+export const getCleanInitialWorkspaces = (userEmail: string): Workspace[] => {
+  const userName = userEmail.split("@")[0];
+  const capitalized = userName.charAt(0).toUpperCase() + userName.slice(1);
+  return [
+    {
+      id: "ws-personal",
+      name: `${capitalized}'s Space`,
+      type: "Personal",
+      icon: "User",
+      role: "Owner",
+      isPinned: true,
+      isFavorite: false,
+      storageUsage: 0,
+      storageQuota: 10,
+      settings: {
+        theme: "light",
+        fontSize: "base",
+        autoSave: true,
+        aiModel: "gemini-3.5-flash",
+        defaultFolder: "General",
+        shortcutsEnabled: true,
+        enableNotifications: true,
+      },
+      members: [
+        { id: "m-1", name: capitalized, email: userEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0] }
+      ],
+      templates: [],
+      integrations: [],
+      sharedLinks: [],
+      invitations: [],
+      auditLogs: [],
+      departments: [],
+      aiHistory: []
+    }
+  ];
+};
 export const INITIAL_WORKSPACES: Workspace[] = [
   {
     id: "ws-aura-core",
@@ -38,7 +75,7 @@ export const INITIAL_WORKSPACES: Workspace[] = [
       { id: "int-2", name: "Slack Communications", desc: "Broadcast generated board minutes and summaries to selected channels.", status: "Disconnected", icon: "Link" },
     ],
     sharedLinks: [
-      { id: "sh-1", noteId: "welcome-note", title: "✨ Welcome to Aura Notes", url: "https://aura.io/s/welcome-aura", expiresAt: "2026-12-31", viewsCount: 142 }
+      { id: "sh-1", noteId: "welcome-note", title: "✨ Welcome to Aura Next", url: "https://aura.io/s/welcome-aura", expiresAt: "2026-12-31", viewsCount: 142 }
     ],
     invitations: [
       { id: "inv-1", email: "claire.redfield@aura.io", role: "Contributor", status: "pending", sentAt: "2026-07-04", expiresAt: "2026-07-11" },
@@ -66,7 +103,7 @@ export const INITIAL_WORKSPACES: Workspace[] = [
       }
     ],
     aiHistory: [
-      { prompt: "Summarize this note", result: "Aura Notes is a professional note taking client designed with custom fonts, keyboard shortcuts, and full local redundancy.", timestamp: "2026-07-05T11:00:00Z" }
+      { prompt: "Summarize this note", result: "Aura Next is a professional note taking client designed with custom fonts, keyboard shortcuts, and full local redundancy.", timestamp: "2026-07-05T11:00:00Z" }
     ]
   },
   {
@@ -163,8 +200,8 @@ export const INITIAL_NOTES: Note[] = [
     workspaceId: "ws-aura-core",
     departmentId: "dept-engineering",
     projectId: "proj-core-app",
-    title: "✨ Welcome to Aura Notes",
-    content: `# Welcome to Aura Notes\n\nAura Notes is a luxurious, minimalist, enterprise-grade note-taking workspace designed for professionals who appreciate simplicity, design, and intelligent assistance.\n\n### Core Features:\n- **Clean Layout**: Sidebars, real-time searchable list, and beautiful editor area.\n- **Keyboard Shortcuts**: Work faster with native commands.\n- **Aesthetic Pairings**: Styled with the Inter & JetBrains Mono font faces, frosted glass layers, and micro-animations.\n- **Embedded Table Component**: Insert and edit rich tabular data within notes.\n- **Interactive AI Assistant**: Summarize, translate, rewrite, extract action items, and chat directly in context.\n\n*Aura is offline-first and automatically synchronized with the server.*`,
+    title: "✨ Welcome to Aura Next",
+    content: `# Welcome to Aura Next\n\nAura Next is a luxurious, minimalist, enterprise-grade note-taking workspace designed for professionals who appreciate simplicity, design, and intelligent assistance.\n\n### Core Features:\n- **Clean Layout**: Sidebars, real-time searchable list, and beautiful editor area.\n- **Keyboard Shortcuts**: Work faster with native commands.\n- **Aesthetic Pairings**: Styled with the Inter & JetBrains Mono font faces, frosted glass layers, and micro-animations.\n- **Embedded Table Component**: Insert and edit rich tabular data within notes.\n- **Interactive AI Assistant**: Summarize, translate, rewrite, extract action items, and chat directly in context.\n\n*Aura is offline-first and automatically synchronized with the server.*`,
     tags: ["Onboarding", "Guides", "Enterprise"],
     isPinned: true,
     isShared: false,
