@@ -1,0 +1,18 @@
+[
+  {
+    "id": "f-general",
+    "workspaceId": "ws-aura-core",
+    "name": "General",
+    "color": "#3b82f6",
+    "icon": "📁",
+    "isExpanded": true
+  },
+  {
+    "id": "folder-1783287638510",
+    "workspaceId": "ws-aura-core",
+    "name": "uyyi",
+    "color": "#10b981",
+    "icon": "📁",
+    "isExpanded": true
+  }
+]
