@@ -1,0 +1,6 @@
+{
+  "name": "Aura Enterprise Notes",
+  "description": "A luxurious, minimalist, enterprise-grade notes application featuring frosted glass layouts, a smart writing workspace, and an interactive Gemini AI assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
