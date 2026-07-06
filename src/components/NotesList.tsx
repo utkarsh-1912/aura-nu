@@ -17,7 +17,8 @@ import {
   Check,
   CheckSquare,
   Square,
-  RotateCcw
+  RotateCcw,
+  X
 } from "lucide-react";
 import { Note, Folder } from "../types";
 
@@ -28,6 +29,7 @@ interface NotesListProps {
   setActiveNoteId: (id: string | null) => void;
   activeFolder: string;
   activeTag: string | null;
+  setActiveTag?: (tag: string | null) => void;
   onNewNote: () => void;
   theme: "light" | "dark";
   onBulkMoveNotes?: (noteIds: string[], targetFolderId: string) => void;
@@ -87,6 +89,7 @@ export default function NotesList({
   setActiveNoteId,
   activeFolder,
   activeTag,
+  setActiveTag,
   onNewNote,
   theme,
   onBulkMoveNotes,
@@ -399,16 +402,23 @@ export default function NotesList({
             </span>
 
             {note.tags.slice(0, 1).map((tag) => (
-              <span
+              <button
                 key={tag}
-                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium whitespace-nowrap ${
+                onClick={(e) => {
+                  e.stopPropagation(); // Avoid selecting the card
+                  if (setActiveTag) {
+                    setActiveTag(activeTag === tag ? null : tag);
+                  }
+                }}
+                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium whitespace-nowrap cursor-pointer transition-all hover:scale-105 ${
                   isActive
-                    ? "bg-blue-100/60 dark:bg-zinc-800 text-blue-600 dark:text-zinc-300"
-                    : "bg-slate-100 dark:bg-zinc-900/60 text-slate-500 dark:text-zinc-400"
+                    ? "bg-blue-100/60 dark:bg-zinc-800 text-blue-600 dark:text-zinc-300 hover:bg-blue-200/60 dark:hover:bg-zinc-700"
+                    : "bg-slate-100 dark:bg-zinc-900/60 text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800"
                 }`}
+                title={`Filter by tag: #${tag}`}
               >
                 {tag}
-              </span>
+              </button>
             ))}
             {note.tags.length > 1 && (
               <span className="text-[9px] opacity-60 self-center">+{note.tags.length - 1}</span>
@@ -440,9 +450,23 @@ export default function NotesList({
       {/* Top Header & Search */}
       <div className="p-3 flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="font-display font-semibold text-base tracking-tight text-slate-900 dark:text-zinc-100">
-            {activeTag ? `#${activeTag}` : activeFolder}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display font-semibold text-base tracking-tight text-slate-900 dark:text-zinc-100">
+              {activeFolder}
+            </h2>
+            {activeTag && (
+              <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                <span>#{activeTag}</span>
+                <button
+                  onClick={() => setActiveTag && setActiveTag(null)}
+                  className="hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer inline-flex items-center justify-center p-0.5 rounded hover:bg-blue-500/20"
+                  title="Clear tag filter"
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             {activeFolder === "Trash" && hasNotes && onEmptyTrash && (
               <button

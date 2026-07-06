@@ -1585,6 +1585,7 @@ export default function WorkspacePage({
                   setActiveNoteId={setActiveNoteId}
                   activeFolder={activeFolder}
                   activeTag={activeTag}
+                  setActiveTag={setActiveTag}
                   onNewNote={handleNewNote}
                   theme={activeTheme}
                   onBulkMoveNotes={handleMoveNotesToFolder}
@@ -1791,6 +1792,7 @@ export default function WorkspacePage({
               setActiveNoteId={setActiveNoteId}
               activeFolder={activeFolder}
               activeTag={activeTag}
+              setActiveTag={setActiveTag}
               onNewNote={handleNewNote}
               theme={activeTheme}
               onBulkMoveNotes={handleMoveNotesToFolder}
