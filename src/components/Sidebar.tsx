@@ -523,7 +523,7 @@ export default function Sidebar({
                 }`}
                 style={{
                   borderLeftColor: isSelected ? folder.color || "#3b82f6" : "transparent",
-                  paddingLeft: `${depth * 10 + 6}px`
+                  paddingLeft: `${depth * 12 + 8}px`
                 }}
               >
                 <div className="flex items-center gap-1.5 min-w-0 flex-grow">
@@ -637,7 +637,7 @@ export default function Sidebar({
         {/* Inline Folder Creation Form */}
         {creatingInParentId === (parentId || "root") && (
           <div
-            style={{ paddingLeft: `${(depth + 1) * 10 + 6}px` }}
+            style={{ paddingLeft: `${(parentId ? depth + 1 : depth) * 12 + 8}px` }}
             className="flex flex-col gap-1.5 p-2 mx-1 rounded-xl bg-slate-50 dark:bg-zinc-900 shadow-sm border border-slate-200/50 dark:border-zinc-800"
           >
             <div className="flex items-center gap-1.5">
@@ -728,10 +728,10 @@ export default function Sidebar({
         <div ref={workspaceMenuRef} className="relative">
           <button
             id="workspace-dropdown-btn"
-            onClick={() => !isSidebarCollapsed && setIsWorkspaceOpen(!isWorkspaceOpen)}
+            onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
             className={`w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${
               theme === "dark" ? "hover:bg-zinc-950/80 bg-zinc-950/20" : "hover:bg-slate-100/80 bg-slate-100/30"
-            } ${isSidebarCollapsed ? "justify-center" : "justify-between"} border border-slate-200/40 dark:border-zinc-800/40 shadow-xs`}
+            } ${isSidebarCollapsed ? "justify-center" : "justify-between"} border border-slate-200/40 dark:border-zinc-800/40 shadow-xs cursor-pointer`}
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div
@@ -754,7 +754,11 @@ export default function Sidebar({
 
           {isWorkspaceOpen && (
             <div
-              className={`absolute top-full left-0 right-0 mt-1.5 rounded-2xl shadow-2xl border p-1.5 z-50 flex flex-col gap-0.5 ${
+              className={`absolute mt-1.5 rounded-2xl shadow-2xl border p-1.5 z-50 flex flex-col gap-0.5 ${
+                isSidebarCollapsed
+                  ? "left-full top-0 ml-2 w-60"
+                  : "top-full left-0 right-0"
+              } ${
                 theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
               }`}
             >
@@ -928,7 +932,30 @@ export default function Sidebar({
         })}
 
         {/* Folders Accordion with Unlimited Nesting */}
-        {!isSidebarCollapsed && (
+        {isSidebarCollapsed ? (
+          <div className="mt-4 flex flex-col items-center gap-1.5 px-2">
+            <div className="w-8 h-px bg-slate-200 dark:bg-zinc-800/80 my-1"></div>
+            {folders.filter(f => !f.parentId).map((folder) => {
+              const isSelected = activeFolder === folder.id && activeTag === null;
+              return (
+                <button
+                  key={folder.id}
+                  onClick={() => handleSelectFolder(folder.id)}
+                  title={folder.name}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs transition-colors cursor-pointer ${
+                    isSelected
+                      ? theme === "dark"
+                        ? "bg-zinc-900 text-indigo-400 font-semibold"
+                        : "bg-white text-blue-600 font-semibold shadow-xs border border-slate-200"
+                      : "text-slate-400 dark:text-zinc-500 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100/40 dark:hover:bg-zinc-900/30"
+                  }`}
+                >
+                  {folder.icon || "📁"}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
           <div id="folders-section" className="mt-4 px-2" onDragOver={handleDragOverHeader} onDrop={handleDropOnHeader}>
             <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-1 py-1">
               <span className="cursor-pointer hover:text-slate-600" title="Drop here to move folder to top-level">Folders</span>
@@ -952,33 +979,58 @@ export default function Sidebar({
         )}
 
         {/* Tags Section */}
-        {!isSidebarCollapsed && tags.length > 0 && (
-          <div id="tags-section" className="mt-4 px-2">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-1 py-1">
-              <span>Tags</span>
-              <Tag size={11} />
-            </div>
-            <div className="flex flex-wrap gap-1 mt-1.5 px-1">
+        {isSidebarCollapsed ? (
+          tags.length > 0 && (
+            <div className="mt-4 flex flex-col items-center gap-1.5 px-2">
+              <div className="w-8 h-px bg-slate-200 dark:bg-zinc-800/80 my-1"></div>
               {tags.map((tag) => {
                 const isSelected = activeTag === tag;
                 return (
                   <button
-                    id={`tag-badge-${tag.toLowerCase()}`}
                     key={tag}
                     onClick={() => handleSelectTag(tag)}
-                    className={`text-[11px] px-2 py-0.5 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
+                    title={`Tag: #${tag}`}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-mono transition-colors cursor-pointer ${
                       isSelected
                         ? "bg-blue-500 text-white font-medium"
-                        : "bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200/60 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                        : "bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200/60 dark:hover:bg-zinc-800 text-slate-400 dark:text-zinc-500 hover:text-slate-800 dark:hover:text-zinc-200"
                     }`}
                   >
-                    <span className="opacity-60">#</span>
-                    <span>{tag}</span>
+                    #
                   </button>
                 );
               })}
             </div>
-          </div>
+          )
+        ) : (
+          tags.length > 0 && (
+            <div id="tags-section" className="mt-4 px-2">
+              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-1 py-1">
+                <span>Tags</span>
+                <Tag size={11} />
+              </div>
+              <div className="flex flex-wrap gap-1 mt-1.5 px-1">
+                {tags.map((tag) => {
+                  const isSelected = activeTag === tag;
+                  return (
+                    <button
+                      id={`tag-badge-${tag.toLowerCase()}`}
+                      key={tag}
+                      onClick={() => handleSelectTag(tag)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
+                        isSelected
+                          ? "bg-blue-500 text-white font-medium"
+                          : "bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200/60 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      <span className="opacity-60">#</span>
+                      <span>{tag}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
         )}
       </div>
 
