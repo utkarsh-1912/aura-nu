@@ -29,7 +29,8 @@ import {
   FileText,
   Settings as SettingsIcon,
   Home,
-  Menu
+  Menu,
+  Search
 } from "lucide-react";
 
 interface WorkspacePageProps {
@@ -1464,9 +1465,10 @@ export default function WorkspacePage({
             {!activeNoteId && (
               <button
                 onClick={() => setIsCommandPaletteOpen(true)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 dark:text-zinc-500 cursor-pointer"
+                title="Search Workspace"
               >
-                <Sparkles size={14} className="text-blue-500 animate-pulse" />
+                <Search size={14} />
               </button>
             )}
           </header>
@@ -1485,9 +1487,9 @@ export default function WorkspacePage({
                 <div
                   className="relative w-72 max-w-[85%] h-full flex flex-col shadow-2xl border-r border-border-primary bg-bg-secondary text-text-primary transition-transform duration-300"
                 >
-                  {/* Sidebar Component */}
-                  <div className="flex-grow overflow-y-auto" onClick={() => setIsMobileSidebarOpen(false)}>
+                  <div className="flex-grow overflow-y-auto">
                     <Sidebar
+                      onMobileClose={() => setIsMobileSidebarOpen(false)}
                       notes={allWorkspaceNotes}
                       folders={workspaceFolders}
                       tags={tagsList}

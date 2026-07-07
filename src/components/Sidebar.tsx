@@ -72,6 +72,7 @@ interface SidebarProps {
   onToggleArchiveNote: (noteId: string) => void;
   onDeleteNote: (noteId: string) => void;
   onSignOut?: () => void;
+  onMobileClose?: () => void;
 }
 
 const AVAILABLE_COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#64748b"];
@@ -97,6 +98,7 @@ export default function Sidebar({
   workspaces,
   activeWorkspaceId,
   setActiveWorkspaceId,
+  onMobileClose,
   onCreateWorkspace,
   onDeleteWorkspace,
   onTogglePinWorkspace,
@@ -228,11 +230,13 @@ export default function Sidebar({
   const handleSelectNav = (id: string) => {
     setActiveTag(null);
     setActiveFolder(id);
+    if (onMobileClose) onMobileClose();
   };
 
   const handleSelectFolder = (folderId: string) => {
     setActiveTag(null);
     setActiveFolder(folderId);
+    if (onMobileClose) onMobileClose();
   };
 
   const handleSelectTag = (tag: string) => {
@@ -248,6 +252,7 @@ export default function Sidebar({
         setActiveNoteId(null);
       }
     }
+    if (onMobileClose) onMobileClose();
   };
 
   // Folder creation triggering
@@ -805,6 +810,7 @@ export default function Sidebar({
                         onClick={() => {
                           setActiveWorkspaceId(w.id);
                           setIsWorkspaceOpen(false);
+                          if (onMobileClose) onMobileClose();
                         }}
                         className="flex items-center gap-2 flex-grow min-w-0 text-left cursor-pointer bg-transparent border-none outline-none text-inherit font-inherit"
                       >

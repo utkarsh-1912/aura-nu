@@ -494,7 +494,7 @@ export default function Dashboard({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   isActive
                     ? "bg-blue-500 text-white font-bold"
                     : "text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
@@ -519,7 +519,7 @@ export default function Dashboard({
             <div className="md:col-span-2 flex flex-col gap-6">
               
               {/* Analytics Summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className={`p-4 rounded-2xl border ${
                   "bg-bg-secondary border-border-primary"
                 } shadow-xs`}>
@@ -871,28 +871,28 @@ export default function Dashboard({
           } shadow-xs`}>
             
             {/* Breadcrumb Navigation */}
-            <div className="flex items-center gap-2 mb-6 bg-slate-100/50 dark:bg-zinc-900/50 p-2.5 rounded-xl border border-slate-200/40 dark:border-zinc-800/40 text-[11px]">
-              <Layers size={13} className="text-blue-500" />
+            <div className="flex items-center gap-2 mb-6 bg-slate-100/50 dark:bg-zinc-900/50 p-2.5 rounded-xl border border-slate-200/40 dark:border-zinc-800/40 text-[11px] overflow-x-auto scrollbar-none whitespace-nowrap">
+              <Layers size={13} className="text-blue-500 shrink-0" />
               <button
                 onClick={() => {
                   setSelectedDeptId(null);
                   setSelectedProjectId(null);
                   setSelectedFolderId(null);
                 }}
-                className="hover:text-blue-500 cursor-pointer font-semibold text-slate-600 dark:text-zinc-300"
+                className="hover:text-blue-500 cursor-pointer font-semibold text-slate-600 dark:text-zinc-300 shrink-0"
               >
                 {activeWorkspace?.name}
               </button>
               
               {selectedDeptId && (
                 <>
-                  <ChevronRight size={10} className="text-slate-400" />
+                  <ChevronRight size={10} className="text-slate-400 shrink-0" />
                   <button
                     onClick={() => {
                       setSelectedProjectId(null);
                       setSelectedFolderId(null);
                     }}
-                    className="hover:text-blue-500 cursor-pointer text-slate-700 dark:text-zinc-200 font-semibold"
+                    className="hover:text-blue-500 cursor-pointer text-slate-700 dark:text-zinc-200 font-semibold shrink-0"
                   >
                     {activeWorkspace?.departments?.find((d) => d.id === selectedDeptId)?.name}
                   </button>
@@ -901,10 +901,10 @@ export default function Dashboard({
 
               {selectedProjectId && (
                 <>
-                  <ChevronRight size={10} className="text-slate-400" />
+                  <ChevronRight size={10} className="text-slate-400 shrink-0" />
                   <button
                     onClick={() => setSelectedFolderId(null)}
-                    className="hover:text-blue-500 cursor-pointer text-slate-700 dark:text-zinc-200 font-semibold"
+                    className="hover:text-blue-500 cursor-pointer text-slate-700 dark:text-zinc-200 font-semibold shrink-0"
                   >
                     {activeWorkspace?.departments
                       ?.find((d) => d.id === selectedDeptId)
@@ -915,8 +915,8 @@ export default function Dashboard({
 
               {selectedFolderId && (
                 <>
-                  <ChevronRight size={10} className="text-slate-400" />
-                  <span className="text-slate-400 font-mono">{selectedFolderId}</span>
+                  <ChevronRight size={10} className="text-slate-400 shrink-0" />
+                  <span className="text-slate-400 font-mono shrink-0">{selectedFolderId}</span>
                 </>
               )}
             </div>
@@ -956,7 +956,7 @@ export default function Dashboard({
                   </div>
 
                   {hasPermission("settings") && (
-                    <form onSubmit={handleAddDeptSubmit} className="mt-6 flex gap-2 max-w-md">
+                    <form onSubmit={handleAddDeptSubmit} className="mt-6 flex flex-col sm:flex-row gap-2 max-w-md">
                       <input
                         type="text"
                         placeholder="New Department name (e.g. Sales)"
@@ -964,11 +964,11 @@ export default function Dashboard({
                         onChange={(e) => setNewDeptName(e.target.value)}
                         className={`text-xs px-3 py-2.5 rounded-xl border outline-none flex-grow ${
                           theme === "dark"
-                            ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
+                            ? "bg-zinc-950 border-zinc-805 text-zinc-300 focus:border-zinc-700"
                             : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
                         }`}
                       />
-                      <button type="submit" className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
+                      <button type="submit" className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
                         Add Department
                       </button>
                     </form>
@@ -1016,7 +1016,7 @@ export default function Dashboard({
                   </div>
 
                   {hasPermission("settings") && (
-                    <form onSubmit={handleAddProjSubmit} className="mt-6 flex gap-2 max-w-md">
+                    <form onSubmit={handleAddProjSubmit} className="mt-6 flex flex-col sm:flex-row gap-2 max-w-md">
                       <input
                         type="text"
                         placeholder="New Project name (e.g. CRM System)"
@@ -1028,7 +1028,7 @@ export default function Dashboard({
                             : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
                         }`}
                       />
-                      <button type="submit" className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
+                      <button type="submit" className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
                         Add Project
                       </button>
                     </form>
@@ -1079,7 +1079,7 @@ export default function Dashboard({
                   </div>
 
                   {hasPermission("settings") && (
-                    <form onSubmit={handleAddFolderSubmit} className="mt-6 flex gap-2 max-w-md">
+                    <form onSubmit={handleAddFolderSubmit} className="mt-6 flex flex-col sm:flex-row gap-2 max-w-md">
                       <input
                         type="text"
                         placeholder="New Folder name (e.g. Specs)"
@@ -1087,11 +1087,11 @@ export default function Dashboard({
                         onChange={(e) => setNewFolderName(e.target.value)}
                         className={`text-xs px-3 py-2.5 rounded-xl border outline-none flex-grow ${
                           theme === "dark"
-                            ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
+                            ? "bg-zinc-950 border-zinc-805 text-zinc-300 focus:border-zinc-700"
                             : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
                         }`}
                       />
-                      <button type="submit" className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
+                      <button type="submit" className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
                         Add Folder
                       </button>
                     </form>
