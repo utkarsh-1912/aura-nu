@@ -34,6 +34,8 @@ interface SettingsModalProps {
   setTheme: (theme: "light" | "dark" | "system") => void;
   currentUserEmail: string;
   notes?: any[];
+  onForceSync?: () => Promise<void>;
+  onClearCache?: () => Promise<void>;
 }
 
 type TabType =
@@ -58,6 +60,8 @@ export default function SettingsModal({
   setTheme,
   currentUserEmail,
   notes = [],
+  onForceSync,
+  onClearCache,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>("appearance");
 
@@ -192,12 +196,32 @@ export default function SettingsModal({
     onUpdateSettings({ ...settings, fontSize: size });
   };
 
-  const handleForceSync = () => {
+  const handleForceSync = async () => {
     setIsSyncingNow(true);
-    setTimeout(() => {
-      setIsSyncingNow(false);
+    try {
+      if (onForceSync) {
+        await onForceSync();
+      }
       alert("Aura database volumes synchronized with cloud nodes successfully.");
-    }, 1200);
+    } catch (e) {
+      alert("Synchronization failed. Please check your internet connection.");
+    } finally {
+      setIsSyncingNow(false);
+    }
+  };
+
+  const handleClearCache = async () => {
+    setIsSyncingNow(true);
+    try {
+      if (onClearCache) {
+        await onClearCache();
+      }
+      alert("Offline Cache storage wiped. Resynchronized successfully from database.");
+    } catch (e) {
+      alert("Failed to clear local cache cleanly.");
+    } finally {
+      setIsSyncingNow(false);
+    }
   };
 
   const handleGenerateToken = (e: React.FormEvent) => {
@@ -219,10 +243,17 @@ export default function SettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none cursor-pointer"
+    >
       <div
         id="settings-modal"
-        className={`w-full max-w-3xl h-[540px] rounded-3xl shadow-2xl flex flex-col md:flex-row border overflow-hidden transition-all ${
+        className={`w-full max-w-3xl h-[540px] rounded-3xl shadow-2xl flex flex-col md:flex-row border overflow-hidden transition-all cursor-default ${
           activeTheme === "dark"
             ? "bg-[#141416] border-zinc-800 text-zinc-100 shadow-black/80"
             : "bg-white border-slate-200 text-slate-800"
@@ -529,11 +560,9 @@ export default function SettingsModal({
                   </button>
 
                   <button
-                    onClick={() => {
-                      localStorage.clear();
-                      alert("Offline Cache storage wiped. Refresh page to restart sandbox.");
-                    }}
-                    className="px-4 py-2.5 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 font-semibold rounded-xl text-xs cursor-pointer"
+                    onClick={handleClearCache}
+                    disabled={isSyncingNow}
+                    className="px-4 py-2.5 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 font-semibold rounded-xl text-xs cursor-pointer disabled:opacity-50"
                   >
                     Clear Cache
                   </button>

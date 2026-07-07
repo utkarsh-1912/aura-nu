@@ -1483,8 +1483,16 @@ export default function Dashboard({
 
       {/* CONFIRMATION DIALOG MODAL FOR CROSS-WORKSPACE ACTIONS */}
       {selectedNoteForAction && crossActionType && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none">
-          <div className="p-5 rounded-2xl border border-border-primary max-w-sm w-full shadow-2xl bg-bg-secondary text-text-primary">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedNoteForAction(null);
+              setCrossActionType(null);
+            }
+          }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none cursor-pointer"
+        >
+          <div className="p-5 rounded-2xl border border-border-primary max-w-sm w-full shadow-2xl bg-bg-secondary text-text-primary cursor-default">
             <div className="flex items-center gap-2 text-amber-500 mb-3">
               <AlertTriangle size={18} />
               <h4 className="font-bold text-sm uppercase tracking-tight">Confirm Isolate Action</h4>

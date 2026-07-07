@@ -45,7 +45,9 @@ import {
   ChevronRight,
   ChevronDown,
   ExternalLink,
-  Tag
+  Tag,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { Note, Workspace, Folder } from "../types";
 import CodeBlockContainer from "./CodeBlockContainer";
@@ -96,6 +98,31 @@ export default function EditorArea({
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashMenuCoords, setSlashMenuCoords] = useState({ top: 0, left: 0 });
   const [isSaving, setIsSaving] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const handleToggleSpeak = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    } else {
+      if (!note?.content) return;
+      const cleanText = note.content
+        .replace(/[#*_\-\[\]]/g, "")
+        .replace(/!\[.*?\]\(.*?\)/g, "")
+        .replace(/\[.*?\]\(.*?\)/g, "");
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+      setIsSpeaking(true);
+    }
+  };
+
+  useEffect(() => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }, [note?.id]);
   const [showHistory, setShowHistory] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [historySearchQuery, setHistorySearchQuery] = useState("");
@@ -1576,8 +1603,11 @@ export default function EditorArea({
                 placeholder="Untitled Note"
                 readOnly={note.isLocked}
               />
+            </div>
 
-              {/* Status Dropdown Pill grouped directly with the heading */}
+            {/* Right Action buttons */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+                            {/* Status Dropdown Pill grouped directly with the heading */}
               {!note.isTrashed && !note.isArchived && (
                 <div className="relative shrink-0" ref={statusDropdownRef}>
                   <button
@@ -1630,10 +1660,6 @@ export default function EditorArea({
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Right Action buttons */}
-            <div className="flex items-center gap-2 flex-shrink-0">
               {/* Clipboard feedback indicator */}
               {copyFeedback && (
                 <span className="text-[10px] text-emerald-500 font-medium font-mono animate-fade-in hidden sm:inline">
@@ -1710,6 +1736,19 @@ export default function EditorArea({
                 }`}
               >
                 <Search size={14} />
+              </button>
+
+              {/* Text to Speech button */}
+              <button
+                onClick={handleToggleSpeak}
+                title={isSpeaking ? "Stop Reading Aloud" : "Read Note Aloud (TTS)"}
+                className={`p-2 rounded-xl border cursor-pointer transition-all ${
+                  isSpeaking
+                    ? "bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-950/20 dark:border-rose-900/50 dark:text-rose-400"
+                    : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
+                }`}
+              >
+                {isSpeaking ? <VolumeX size={14} className="animate-pulse" /> : <Volume2 size={14} />}
               </button>
 
               {/* Focus Mode button - Desktop only */}
@@ -2809,9 +2848,16 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none cursor-pointer"
+    >
       <div
-        className="w-full max-w-md rounded-3xl shadow-2xl border border-border-primary overflow-hidden p-5 flex flex-col gap-4 animate-fade-in bg-bg-secondary text-text-primary"
+        className="w-full max-w-md rounded-3xl shadow-2xl border border-border-primary overflow-hidden p-5 flex flex-col gap-4 animate-fade-in bg-bg-secondary text-text-primary cursor-default"
       >
         <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 dark:border-zinc-800/80">
           <h3 className="font-display font-semibold text-sm flex items-center gap-2">

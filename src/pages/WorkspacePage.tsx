@@ -128,6 +128,7 @@ export default function WorkspacePage({
   const setActiveFolder = (folderId: string) => {
     // Centralized first note lookup inside the selected folder
     const filteredNotes = notes.filter((note) => {
+      if (note.workspaceId !== activeWorkspaceId) return false;
       if (folderId === "All Notes") return !note.isTrashed && !note.isArchived;
       if (folderId === "Pinned") return note.isPinned && !note.isTrashed && !note.isArchived;
       if (folderId === "Drafts") return (note.status === "Draft" || note.tags.includes("Draft")) && !note.isTrashed && !note.isArchived;
@@ -139,7 +140,7 @@ export default function WorkspacePage({
       return note.folder === folderId && !note.isTrashed && !note.isArchived;
     });
 
-    const firstNoteId = filteredNotes.length > 0 ? filteredNotes[0].id : null;
+    const firstNoteId = (isMobile || filteredNotes.length === 0) ? null : filteredNotes[0].id;
     const folderParam = folderId === "All Notes" ? "all" :
                         folderId === "Pinned" ? "pin" :
                         folderId === "Drafts" ? "draft" :
@@ -246,10 +247,13 @@ export default function WorkspacePage({
   // Mobile FAB state
   const [isFabOpen, setIsFabOpen] = useState(false);
 
-  // Voice recording simulation states
+  // Voice recording browser speech states
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
-  const [voiceTimer, setVoiceTimer] = useState(3);
-  const [voiceStatus, setVoiceStatus] = useState<"recording" | "transcribing" | "success">("recording");
+  const [voiceTimer, setVoiceTimer] = useState(0); // Not using timer for active speech, but can keep for tracking active seconds
+  const [voiceStatus, setVoiceStatus] = useState<"recording" | "transcribing" | "success" | "idle">("idle");
+  const [transcribedText, setTranscribedText] = useState("");
+  const [isSpeechSupported, setIsSpeechSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
 
   // Drawing pad simulation states
   const [showDrawingPad, setShowDrawingPad] = useState(false);
@@ -557,11 +561,12 @@ export default function WorkspacePage({
 
   // Welcome Note Auto-Select Effect
   useEffect(() => {
-    // Only auto-select when we have notes and we are not in Dashboard or other non-note views
-    if (notes.length === 0 || activeNoteId !== null || activeFolder === "Dashboard") return;
+    // Only auto-select when we have notes, we are not on mobile, and we are not in Dashboard or other non-note views
+    if (isMobile || notes.length === 0 || activeNoteId !== null || activeFolder === "Dashboard") return;
 
-    // Filter notes matching the current folder context
+    // Filter notes matching the current folder context and current workspace
     const filteredNotes = notes.filter((note) => {
+      if (note.workspaceId !== activeWorkspaceId) return false;
       if (activeFolder === "All Notes") return !note.isTrashed && !note.isArchived;
       if (activeFolder === "Pinned") return note.isPinned && !note.isTrashed && !note.isArchived;
       if (activeFolder === "Drafts") return (note.status === "Draft" || note.tags.includes("Draft")) && !note.isTrashed && !note.isArchived;
@@ -596,30 +601,43 @@ export default function WorkspacePage({
       const data = await response.json();
       if (response.ok && data.notes) {
         const serverNotes = data.notes;
+        const lastSync = Number(localStorage.getItem(`aura-last-sync-${userEmail}`) || "0");
+        const now = Date.now();
         
         setNotes((currentLocalNotes) => {
           const validLocal = currentLocalNotes.map(n => n.workspaceId ? n : { ...n, workspaceId: "ws-aura-core" });
           if (validLocal.length === 0) {
             localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(serverNotes));
+            localStorage.setItem(`aura-last-sync-${userEmail}`, String(now));
             return serverNotes;
           }
 
-          const mergedMap = new Map<string, Note>();
-          validLocal.forEach((note) => mergedMap.set(note.id, note));
-
-          serverNotes.forEach((sNote: Note) => {
-            const cleanSNote = sNote.workspaceId ? sNote : { ...sNote, workspaceId: "ws-aura-core" };
-            const lNote = mergedMap.get(cleanSNote.id);
-            if (!lNote || new Date(cleanSNote.updatedAt).getTime() > new Date(lNote.updatedAt).getTime()) {
-              mergedMap.set(cleanSNote.id, cleanSNote);
+          const localOnlyOrNewer: Note[] = [];
+          validLocal.forEach((lNote) => {
+            const sNote = serverNotes.find((n: Note) => n.id === lNote.id);
+            if (!sNote) {
+              const noteCreatedTime = new Date(lNote.createdAt || lNote.updatedAt).getTime();
+              if (lastSync === 0 || noteCreatedTime > lastSync) {
+                localOnlyOrNewer.push(lNote);
+              }
+            } else if (new Date(lNote.updatedAt).getTime() > new Date(sNote.updatedAt).getTime()) {
+              localOnlyOrNewer.push(lNote);
             }
           });
 
-          const mergedList = Array.from(mergedMap.values());
-          localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(mergedList));
-          syncNotesToServer(mergedList);
+          const finalMap = new Map<string, Note>();
+          serverNotes.forEach((sNote: Note) => finalMap.set(sNote.id, sNote));
+          localOnlyOrNewer.forEach((lNote) => finalMap.set(lNote.id, lNote));
 
-          return mergedList;
+          const finalList = Array.from(finalMap.values());
+          localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(finalList));
+          localStorage.setItem(`aura-last-sync-${userEmail}`, String(now));
+
+          if (localOnlyOrNewer.length > 0) {
+            syncNotesToServer(finalList);
+          }
+
+          return finalList;
         });
 
         addToast("Redundant cloud synchronization complete", "info");
@@ -659,8 +677,41 @@ export default function WorkspacePage({
       });
       const data = await response.json();
       if (response.ok && data.folders) {
-        setFolders(data.folders);
-        localStorage.setItem(`aura-folders-backup-${userEmail}`, JSON.stringify(data.folders));
+        const serverFolders = data.folders;
+        const lastSync = Number(localStorage.getItem(`aura-last-sync-folders-${userEmail}`) || "0");
+        const now = Date.now();
+
+        setFolders((currentLocalFolders) => {
+          if (currentLocalFolders.length === 0) {
+            localStorage.setItem(`aura-folders-backup-${userEmail}`, JSON.stringify(serverFolders));
+            localStorage.setItem(`aura-last-sync-folders-${userEmail}`, String(now));
+            return serverFolders;
+          }
+
+          const localOnlyOrNewer: Folder[] = [];
+          currentLocalFolders.forEach((lFolder) => {
+            const sFolder = serverFolders.find((f: Folder) => f.id === lFolder.id);
+            if (!sFolder) {
+              if (lastSync === 0) {
+                localOnlyOrNewer.push(lFolder);
+              }
+            }
+          });
+
+          const finalMap = new Map<string, Folder>();
+          serverFolders.forEach((sFolder: Folder) => finalMap.set(sFolder.id, sFolder));
+          localOnlyOrNewer.forEach((lFolder) => finalMap.set(lFolder.id, lFolder));
+
+          const finalList = Array.from(finalMap.values());
+          localStorage.setItem(`aura-folders-backup-${userEmail}`, JSON.stringify(finalList));
+          localStorage.setItem(`aura-last-sync-folders-${userEmail}`, String(now));
+
+          if (localOnlyOrNewer.length > 0) {
+            syncFoldersToServer(finalList);
+          }
+
+          return finalList;
+        });
       }
     } catch (err) {
       console.warn("Express server folders fallback:", err);
@@ -797,7 +848,7 @@ export default function WorkspacePage({
     setTimeout(() => {
       localStorage.setItem(`aura-active-workspace-id-${userEmail}`, id);
 
-      const nextNoteId = lastOpenedNotes[id] || null;
+      const nextNoteId = isMobile ? null : (lastOpenedNotes[id] || null);
       const nextFolder = lastOpenedFolders[id] || "Dashboard";
 
       // Verify custom folder exists in the target workspace, else default to Dashboard
@@ -1217,8 +1268,9 @@ export default function WorkspacePage({
   }, [allWorkspaceNotes]);
 
   const activeNote = useMemo(() => {
-    return notes.find((n) => n.id === activeNoteId) || null;
-  }, [notes, activeNoteId]);
+    const found = notes.find((n) => n.id === activeNoteId);
+    return (found && found.workspaceId === activeWorkspaceId) ? found : null;
+  }, [notes, activeNoteId, activeWorkspaceId]);
 
   const prevActiveNoteIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1297,32 +1349,93 @@ export default function WorkspacePage({
   };
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (showVoiceRecorder) {
-      if (voiceTimer > 0 && voiceStatus === "recording") {
-        interval = setInterval(() => {
-          setVoiceTimer((t) => t - 1);
-        }, 1000);
-      } else if (voiceTimer === 0 && voiceStatus === "recording") {
-        setVoiceStatus("transcribing");
-        setTimeout(() => {
-          setVoiceStatus("success");
-          setTimeout(() => {
-            setShowVoiceRecorder(false);
-            handleNewNoteWithContent(
-              "🎙️ Voice Notes Strategy Minutes",
-              `# 🎙️ Voice Notes Strategy Minutes\n\n- **Date**: ${new Date().toLocaleDateString()}\n- **Format**: Smart voice memo compiled by Gemini Flash 3.5\n\n## 📝 Transcribed Synopsis:\n"We must compress the Webpack and Vite split bundles down to 180ms and build dual redundant cloud storage sync hooks."\n\n## 🧠 Gemini Generated Action-items:\n- [ ] Optimize lazy components code splitting\n- [ ] Configure PostgreSQL replication checkpoints`,
-              "General",
-              ["Draft", "AI Transcribe"]
-            );
-            setVoiceTimer(3);
-            setVoiceStatus("recording");
-          }, 1000);
-        }, 2000);
+    let timerInterval: NodeJS.Timeout;
+    if (!showVoiceRecorder) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
       }
+      setVoiceStatus("idle");
+      return;
     }
-    return () => clearInterval(interval);
-  }, [showVoiceRecorder, voiceTimer, voiceStatus]);
+
+    setTranscribedText("Requesting microphone permission...");
+    setVoiceTimer(0);
+    setVoiceStatus("recording");
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setIsSpeechSupported(false);
+      setTranscribedText("Web Speech API is not supported in this browser. Fallback simulated: We are finalizing the aura offline first replication and design specs.");
+      // Start a simulated timer to increase seconds
+      timerInterval = setInterval(() => {
+        setVoiceTimer((t) => t + 1);
+      }, 1000);
+      return;
+    }
+
+    setIsSpeechSupported(true);
+    let rec: any;
+    try {
+      rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = "en-US";
+
+      rec.onstart = () => {
+        setTranscribedText("Listening... speak clearly into your mic.");
+        timerInterval = setInterval(() => {
+          setVoiceTimer((t) => t + 1);
+        }, 1000);
+      };
+
+      rec.onresult = (event: any) => {
+        let finalTranscript = "";
+        let interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        const combined = finalTranscript || interimTranscript;
+        if (combined.trim()) {
+          setTranscribedText(combined);
+        }
+      };
+
+      rec.onerror = (err: any) => {
+        console.error("Speech Recognition Error:", err);
+        if (err.error === "not-allowed") {
+          setTranscribedText("Microphone access denied. Please allow microphone permissions in your browser settings.");
+        } else {
+          setTranscribedText(`Error: ${err.error}. Check browser microphone setup.`);
+        }
+      };
+
+      rec.onend = () => {
+        // If ended but still showing voice recorder, restart or stay idle
+      };
+
+      rec.start();
+      recognitionRef.current = rec;
+    } catch (e) {
+      console.error("Speech init failure:", e);
+      setTranscribedText("Speech Recognition could not be initialized.");
+    }
+
+    return () => {
+      clearInterval(timerInterval);
+      if (rec) {
+        try {
+          rec.stop();
+        } catch (e) {}
+      }
+    };
+  }, [showVoiceRecorder]);
 
   useEffect(() => {
     if (showDrawingPad && canvasRef.current) {
@@ -1395,15 +1508,55 @@ export default function WorkspacePage({
     if (!canvasRef.current) return;
     const dataUrl = canvasRef.current.toDataURL();
     
-    handleNewNoteWithContent(
-      "🎨 Quick Drawing Scratchpad",
-      `# 🎨 Quick Drawing Scratchpad\n\nThis document is a visual container for your drawn strategy doodles or signatures.\n\n![Aura Sketch signature](${dataUrl})\n\nFeel free to write descriptions or annotations below this block.`,
-      "General",
-      ["Doodle", "Drawing"]
-    );
+    if (activeNoteId && activeNote) {
+      const updatedContent = `${activeNote.content || ""}\n\n![Aura Sketch signature](${dataUrl})\n`;
+      handleUpdateActiveNote({
+        ...activeNote,
+        content: updatedContent,
+        updatedAt: new Date().toISOString()
+      });
+      addToast("Sketch appended to current note!", "success");
+    } else {
+      handleNewNoteWithContent(
+        "🎨 Quick Drawing Scratchpad",
+        `# 🎨 Quick Drawing Scratchpad\n\nThis document is a visual container for your drawn strategy doodles or signatures.\n\n![Aura Sketch signature](${dataUrl})\n\nFeel free to write descriptions or annotations below this block.`,
+        "General",
+        ["Doodle", "Drawing"]
+      );
+      addToast("Sketch saved to new note!", "success");
+    }
     
     setShowDrawingPad(false);
-    addToast("Sketch saved to note!", "success");
+  };
+
+  const handleSaveVoiceNote = () => {
+    const text = transcribedText.trim();
+    if (!text || text === "Requesting microphone permission..." || text.startsWith("Listening...")) {
+      addToast("No speech transcribed yet!", "error");
+      return;
+    }
+
+    if (activeNoteId && activeNote) {
+      const updatedContent = `${activeNote.content || ""}\n\n🎙️ **Voice dictation transcript** (${voiceTimer}s):\n> ${text}\n`;
+      handleUpdateActiveNote({
+        ...activeNote,
+        content: updatedContent,
+        updatedAt: new Date().toISOString()
+      });
+      addToast("Transcription appended to current note!", "success");
+    } else {
+      handleNewNoteWithContent(
+        "🎙️ Voice Notes Strategy Minutes",
+        `# 🎙️ Voice Notes Strategy Minutes\n\n- **Date**: ${new Date().toLocaleDateString()}\n- **Duration**: ${voiceTimer} seconds\n- **Format**: Browser Web Speech API\n\n## 📝 Transcribed Synopsis:\n"${text}"\n\nFeel free to write descriptions or annotations below this block.`,
+        "General",
+        ["Draft", "AI Transcribe"]
+      );
+      addToast("Voice note saved to new note!", "success");
+    }
+    
+    setShowVoiceRecorder(false);
+    setVoiceTimer(0);
+    setTranscribedText("");
   };
 
   return (
@@ -1541,6 +1694,10 @@ export default function WorkspacePage({
               <Dashboard
                 notes={workspaceNotes}
                 setActiveNoteId={(id) => {
+                  const targetNote = workspaceNotes.find((n) => n.id === id);
+                  if (targetNote) {
+                    setActiveFolder(targetNote.folder || "All Notes");
+                  }
                   setActiveNoteId(id);
                   setMobileTab("notes");
                 }}
@@ -1617,6 +1774,7 @@ export default function WorkspacePage({
                 onClose={() => setMobileTab("notes")}
                 theme={activeTheme}
                 onAddToast={addToast}
+                currentUserEmail={userEmail}
               />
             )}
 
@@ -1713,6 +1871,9 @@ export default function WorkspacePage({
                 <button
                   key={tab.id}
                   onClick={() => {
+                    if (mobileTab === "notes" && tab.id === "notes") {
+                      setActiveNoteId(null);
+                    }
                     setMobileTab(tab.id as any);
                     if (tab.id !== "notes") {
                       setActiveNoteId(null);
@@ -1820,7 +1981,13 @@ export default function WorkspacePage({
             {activeFolder === "Dashboard" ? (
               <Dashboard
                 notes={workspaceNotes}
-                setActiveNoteId={setActiveNoteId}
+                setActiveNoteId={(id) => {
+                  const targetNote = workspaceNotes.find((n) => n.id === id);
+                  if (targetNote) {
+                    setActiveFolder(targetNote.folder || "All Notes");
+                  }
+                  setActiveNoteId(id);
+                }}
                 onNewNoteWithContent={handleNewNoteWithContent}
                 reminders={workspaceReminders}
                 onAddReminder={handleAddReminder}
@@ -1922,6 +2089,7 @@ export default function WorkspacePage({
                 onClose={() => setIsAiPanelOpen(false)}
                 theme={activeTheme}
                 onAddToast={addToast}
+                currentUserEmail={userEmail}
               />
             )}
           </div>
@@ -1930,57 +2098,66 @@ export default function WorkspacePage({
 
       {/* GLOBAL SHARED SIMULATED DIALOGS & OVERLAYS */}
 
-      {/* 1. Simulated Voice Recorder overlay */}
+      {/* 1. Real browser-based Voice Recorder / Speech-to-Text overlay */}
       {showVoiceRecorder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4">
-          <div className="w-full max-w-sm p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl">
-            <div className="relative mb-4 flex items-center justify-center">
-              {voiceStatus === "recording" && (
-                <div className="absolute inset-0 w-16 h-16 rounded-full border border-red-500/30 animate-ping"></div>
-              )}
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center relative ${
-                voiceStatus === "recording"
-                  ? "bg-red-500/10 text-red-500 animate-pulse"
-                  : "bg-blue-500/10 text-blue-500"
-              }`}>
-                {voiceStatus === "recording" ? <Mic size={24} /> : <Volume2 size={24} className="animate-bounce" />}
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowVoiceRecorder(false);
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer"
+        >
+          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl cursor-default gap-3">
+            <div className="relative flex items-center justify-center">
+              <div className="absolute inset-0 w-16 h-16 rounded-full border border-red-500/30 animate-ping"></div>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-red-500/10 text-red-500 animate-pulse relative">
+                <Mic size={24} />
               </div>
             </div>
 
-            <h4 className="font-semibold text-sm">
-              {voiceStatus === "recording" && "Recording Strategy Voice Memo"}
-              {voiceStatus === "transcribing" && "Gemini compiling audio logs..."}
-              {voiceStatus === "success" && "Voice compilation complete!"}
-            </h4>
+            <h4 className="font-semibold text-sm">🎙️ Live Browser Speech-to-Text</h4>
+            <span className="text-[10px] font-mono text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-md">
+              Recording Duration: {voiceTimer}s
+            </span>
 
-            <p className="text-[10px] text-slate-400 mt-1 max-w-[240px] leading-relaxed">
-              {voiceStatus === "recording" && `Audio stream recording active. Speak clearly... (${voiceTimer}s remaining)`}
-              {voiceStatus === "transcribing" && "Formulating document outline, tags, and action-items checklists from transcription buffers."}
-              {voiceStatus === "success" && "Successfully launched transcript record into active space."}
-            </p>
+            <div className="w-full h-32 overflow-y-auto mt-2 p-3 rounded-xl border border-border-primary bg-bg-primary text-left text-xs leading-relaxed font-sans select-text">
+              {transcribedText}
+            </div>
 
-            {voiceStatus === "recording" && (
-              <div className="flex gap-1 items-center justify-center h-8 mt-5">
-                {[...Array(6)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-1 bg-red-500 rounded-full animate-voice-bar"
-                    style={{
-                      height: `${Math.random() * 24 + 6}px`,
-                      animationDelay: `${i * 0.15}s`
-                    }}
-                  ></div>
-                ))}
-              </div>
-            )}
+            <div className="flex gap-2 w-full mt-2">
+              <button
+                onClick={() => {
+                  setShowVoiceRecorder(false);
+                  setVoiceTimer(0);
+                  setTranscribedText("");
+                }}
+                className="flex-grow py-2 border border-border-primary bg-bg-primary hover:bg-bg-secondary text-text-secondary hover:text-text-primary text-xs font-semibold rounded-xl cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveVoiceNote}
+                className="flex-grow py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-xl cursor-pointer"
+              >
+                Save to Note
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* 2. Drawing Scratchpad overlay */}
       {showDrawingPad && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4">
-          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-4 shadow-2xl">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowDrawingPad(false);
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer"
+        >
+          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-4 shadow-2xl cursor-default">
             <div className="flex justify-between items-center">
               <h4 className="font-semibold text-sm">Quick Drawing Scratchpad</h4>
               <button
@@ -2047,6 +2224,34 @@ export default function WorkspacePage({
         setTheme={setTheme}
         currentUserEmail={userEmail}
         notes={notes}
+        onForceSync={async () => {
+          await fetchNotesFromServer();
+          await fetchFoldersFromServer();
+        }}
+        onClearCache={async () => {
+          localStorage.removeItem(`aura-notes-backup-${userEmail}`);
+          localStorage.removeItem(`aura-folders-backup-${userEmail}`);
+          localStorage.setItem(`aura-last-sync-${userEmail}`, "0");
+          localStorage.setItem(`aura-last-sync-folders-${userEmail}`, "0");
+          
+          const response = await fetch("/api/notes", {
+            headers: { "X-User-Email": userEmail }
+          });
+          const data = await response.json();
+          if (response.ok && data.notes) {
+            setNotes(data.notes);
+            localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(data.notes));
+          }
+          
+          const responseFolders = await fetch("/api/folders", {
+            headers: { "X-User-Email": userEmail }
+          });
+          const dataFolders = await responseFolders.json();
+          if (responseFolders.ok && dataFolders.folders) {
+            setFolders(dataFolders.folders);
+            localStorage.setItem(`aura-folders-backup-${userEmail}`, JSON.stringify(dataFolders.folders));
+          }
+        }}
       />
 
       {/* 4. COMMAND PALETTE SPOTLIGHT MODAL */}

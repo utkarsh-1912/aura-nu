@@ -15,7 +15,9 @@ import {
   Sun,
   Lock,
   FileText,
-  MousePointerClick
+  MousePointerClick,
+  Table,
+  ListTodo
 } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -60,38 +62,38 @@ export default function LandingPage({
   const features = [
     {
       icon: Sparkles,
-      title: "Gemini Generative Assistant",
-      desc: "Instantly draft project OKRs, outline strategic board notes, extract high-priority action checklists, or translate documents with in-context context awareness.",
+      title: "Gemini Copilot Actions",
+      desc: "Instantly generate summaries, rewrite meeting notes, extract lists of action items, translate to Spanish/French, or chat directly in-context with Gemini Flash 3.5.",
       color: "from-blue-500/10 to-indigo-500/10 text-indigo-500",
     },
     {
-      icon: Database,
-      title: "Dual Client-Cloud Sync",
-      desc: "Work on airplanes or offline subways. Aura logs updates to a local redundancy pipeline and synchronizes seamlessly back to the Express container database.",
+      icon: Table,
+      title: "Interactive Markdown Tables",
+      desc: "Insert, edit, and reorganize raw data tables inside Markdown pages with live cell editing, column resizing, and row additions.",
       color: "from-purple-500/10 to-pink-500/10 text-purple-500",
     },
     {
       icon: Zap,
-      title: "Lightning Spotlight Palette",
-      desc: "Hit ⌘K at any millisecond to activate the instant navigation palette. Jump between notes, switch folders, delete files, or toggle dark modes instantly.",
+      title: "Spotlight Command Palette",
+      desc: "Tap search or hit ⌘K to activate search, execute AI shortcuts, select workspaces, delete notes, or adjust appearance instantly.",
       color: "from-amber-500/10 to-orange-500/10 text-amber-500",
     },
     {
-      icon: Shield,
-      title: "Enterprise Multi-Factor Access",
-      desc: "Reinforce workspace storage utilizing modern Passkeys, hardware authentication keys, Magic Links, or Google / Apple / Microsoft social login flows.",
+      icon: Database,
+      title: "Offline-First Client Sync",
+      desc: "Work with zero connectivity. Client storage replicates to local cache databases and automatically synchronizes to Express servers upon reconnection.",
       color: "from-emerald-500/10 to-teal-500/10 text-emerald-500",
     },
     {
-      icon: Globe,
-      title: "Responsive Bottom Navigation",
-      desc: "Fully responsive layouts from wide 4K screens to 320px mobile viewports, featuring mobile drawer menus, large tap actions, and swipe controls.",
+      icon: ListTodo,
+      title: "Organizational Workspace Trees",
+      desc: "Organize work across departments, projects, and folder branches. Filter documents using horizontal scrollable tag bars.",
       color: "from-rose-500/10 to-red-500/10 text-rose-500",
     },
     {
-      icon: Users,
-      title: "Interactive Onboarding",
-      desc: "Launch custom workspaces, choose preset design themes, import external files, and onboard core collaborators in under 45 seconds.",
+      icon: Shield,
+      title: "Enterprise Custom Rules & Roles",
+      desc: "Define custom guidelines, allocate manager/member/owner roles, enforce storage quotas, and sync workspace visual themes.",
       color: "from-cyan-500/10 to-blue-500/10 text-cyan-500",
     },
   ];

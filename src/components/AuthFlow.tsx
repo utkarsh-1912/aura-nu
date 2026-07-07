@@ -598,9 +598,16 @@ export default function AuthFlow({
 
       {/* Biometric Scanning Pop-over Modal Dialog */}
       {showBiometrics && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowBiometrics(false);
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none cursor-pointer"
+        >
           <div
-            className="w-[280px] p-6 rounded-2xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl"
+            className="w-[280px] p-6 rounded-2xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl cursor-default"
           >
             <div className="relative mb-4 flex items-center justify-center">
               <div className="absolute inset-0 w-16 h-16 rounded-full border border-blue-500/30 animate-ping"></div>

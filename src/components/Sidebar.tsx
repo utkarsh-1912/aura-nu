@@ -1268,8 +1268,15 @@ export default function Sidebar({
 
       {/* Safe Deletion Confirmation Modal Overlay */}
       {deleteConfirmFolderId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className={`p-6 rounded-3xl max-w-md w-full border shadow-2xl flex flex-col gap-4 ${
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setDeleteConfirmFolderId(null);
+            }
+          }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 cursor-pointer"
+        >
+          <div className={`p-6 rounded-3xl max-w-md w-full border shadow-2xl flex flex-col gap-4 cursor-default ${
             theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
           }`}>
             <div className="flex items-start gap-3">
