@@ -12,13 +12,9 @@ export default function PrivacyPage({ theme }: PrivacyPageProps) {
   }, []);
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-200 ${
-      theme === "dark" ? "bg-[#09090b] text-zinc-100" : "bg-[#FAFAFC] text-slate-900"
-    }`}>
+    <div className="min-h-screen font-sans transition-colors duration-200 bg-bg-primary text-text-primary">
       {/* Header */}
-      <header className={`sticky top-0 z-50 border-b backdrop-blur-md ${
-        theme === "dark" ? "bg-[#09090b]/80 border-zinc-800" : "bg-[#FAFAFC]/80 border-slate-200"
-      }`}>
+      <header className="sticky top-0 z-50 border-b backdrop-blur-md bg-bg-primary/80 border-border-primary">
         <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
           <Link
             to="/"

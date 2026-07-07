@@ -166,10 +166,8 @@ export default function LandingPage({
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-              <Sparkles size={16} className="animate-pulse" />
-            </div>
-            <span className="font-display font-bold text-base tracking-tight text-slate-900 dark:text-white">
+            <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain rounded-xl shadow-md shadow-blue-500/10" />
+            <span className="hidden sm:inline font-tomorrow font-bold text-base tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
               Aura Next
             </span>
           </div>
@@ -181,7 +179,7 @@ export default function LandingPage({
             <a href="#faq-section" className="hover:text-slate-900 dark:hover:text-white transition-colors">FAQ</a>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => onSetTheme(theme === "light" ? "dark" : "light")}
               className={`p-2 rounded-xl border transition-colors ${
@@ -197,7 +195,7 @@ export default function LandingPage({
             <button
               id="landing-login-btn"
               onClick={() => onNavigateToAuth("login")}
-              className="text-xs font-semibold px-4 py-2 text-slate-600 dark:text-zinc-300 hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
+              className="text-xs font-semibold px-2 sm:px-4 py-2 text-slate-600 dark:text-zinc-300 hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
             >
               Login
             </button>
@@ -205,7 +203,7 @@ export default function LandingPage({
             <button
               id="landing-register-btn"
               onClick={() => onNavigateToAuth("register")}
-              className="text-xs font-semibold px-4 py-2 bg-slate-950 text-white dark:bg-white dark:text-zinc-950 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all shadow-sm cursor-pointer"
+              className="text-xs font-semibold px-3 sm:px-4 py-2 bg-slate-950 text-white dark:bg-white dark:text-zinc-950 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all shadow-sm cursor-pointer whitespace-nowrap"
             >
               Get Started
             </button>
@@ -291,7 +289,7 @@ export default function LandingPage({
               </div>
               <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
                 <Lock size={10} />
-                app.auranotes.io/gutkarshlb/strategy-minutes
+                app.auranext.io/w/strategy/min
               </div>
               <div className="w-12"></div>
             </div>
@@ -563,10 +561,8 @@ export default function LandingPage({
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center text-white">
-                <Sparkles size={14} />
-              </div>
-              <span className="font-display font-bold text-sm tracking-tight text-slate-900 dark:text-white">
+              <img src="/logo.png" alt="Aura Logo" className="w-7 h-7 object-contain rounded-lg shadow-sm shadow-blue-500/10" />
+              <span className="font-tomorrow font-bold text-sm tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
                 Aura Next
               </span>
             </div>
@@ -598,23 +594,23 @@ export default function LandingPage({
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-zinc-300 mb-4">Newsletter</h4>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-3">Join our telemetry for major capabilities updates.</p>
-            <form onSubmit={(e) => { e.preventDefault(); alert("Thanks for joining Aura Next list!"); }} className="flex gap-1.5">
+            <form onSubmit={(e) => { e.preventDefault(); alert("Thanks for joining Aura Next list!"); }} className="flex gap-1.5 w-full">
               <input
                 type="email"
                 placeholder="developer@aura.io"
                 required
-                className={`text-[11px] px-3 py-2 rounded-lg border outline-none flex-grow ${
+                className={`text-[11px] px-3 py-2 rounded-lg border outline-none flex-grow min-w-0 ${
                   theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700" : "bg-white border-slate-200 text-slate-700 focus:border-blue-400"
                 }`}
               />
-              <button type="submit" className="px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center cursor-pointer">
+              <button type="submit" className="px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center cursor-pointer shrink-0">
                 Join
               </button>
             </form>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto pt-8 border-t border-slate-200/50 dark:border-zinc-800/60 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
+        <div className="max-w-7xl mx-auto pt-8 border-t border-slate-200/50 dark:border-zinc-800/60 flex flex-col sm:flex-row justify-between items-center text-center sm:text-left text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
           <span>&copy; {new Date().getFullYear()} Aura Inc. All standard developer rights reserved.</span>
           <div className="flex gap-4 mt-4 sm:mt-0">
             <Link to="/terms" className="hover:text-blue-500 transition-colors cursor-pointer">Terms of Service</Link>

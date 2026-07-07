@@ -201,11 +201,7 @@ export default function CommandPalette({
     >
       <div
         id="command-palette-modal"
-        className={`w-full max-w-lg h-[410px] rounded-2xl shadow-2xl flex flex-col border overflow-hidden transition-all duration-200 ${
-          theme === "dark"
-            ? "bg-[#18181b] border-zinc-800 text-zinc-100"
-            : "bg-white border-slate-200 text-slate-800"
-        }`}
+        className="w-full max-w-lg h-[410px] rounded-2xl shadow-2xl flex flex-col border border-border-primary overflow-hidden transition-all duration-200 bg-bg-secondary text-text-primary"
       >
         {/* Search Input Bar */}
         <div className="relative p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center gap-3 shrink-0">

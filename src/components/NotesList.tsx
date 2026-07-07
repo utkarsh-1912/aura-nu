@@ -340,16 +340,10 @@ export default function NotesList({
         onDragStart={(e) => handleDragStart(e, note)}
         className={`py-2.5 px-3 rounded-xl mx-1.5 mb-1.5 cursor-pointer transition-all duration-150 select-none group relative border ${
           isActive
-            ? theme === "dark"
-              ? "bg-[#27272a] border-zinc-700 shadow-sm text-white"
-              : "bg-white border-blue-100 shadow-md shadow-blue-500/5 text-slate-900"
+            ? "bg-bg-secondary border-border-primary shadow-xs text-text-primary font-semibold"
             : isSelected
-            ? theme === "dark"
-              ? "bg-blue-950/40 border-blue-800 text-blue-100"
-              : "bg-blue-50/50 border-blue-200 text-blue-900"
-            : theme === "dark"
-            ? "bg-[#18181b]/50 border-transparent hover:bg-zinc-800/40 text-zinc-300"
-            : "bg-transparent border-transparent hover:bg-slate-100/50 text-slate-700"
+            ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-semibold"
+            : "bg-transparent border-transparent hover:bg-bg-secondary/80 hover:border-border-primary text-text-secondary hover:text-text-primary"
         }`}
       >
         {/* Checkbox indicator for multi-selection mode */}
@@ -501,9 +495,7 @@ export default function NotesList({
     <div
       ref={notesListRef}
       id="notes-list-column"
-      className={`${width ? "" : "w-[360px]"} h-full flex flex-col border-r transition-colors duration-200 relative ${
-        theme === "dark" ? "bg-[#09090b] border-zinc-800" : "bg-[#FAFAFC] border-slate-200"
-      }`}
+      className={`${width ? "" : "w-[360px]"} h-full flex flex-col border-r border-border-primary transition-colors duration-200 relative bg-bg-primary text-text-primary`}
       style={width ? { width: `${width}px`, minWidth: `${width}px`, flexGrow: 0, flexShrink: 0 } : undefined}
     >
       {/* Top Header & Search */}

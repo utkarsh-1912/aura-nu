@@ -217,11 +217,7 @@ export default function AiPanel({
   return (
     <div
       id="ai-panel"
-      className={`w-[360px] h-full border-l flex flex-col flex-shrink-0 transition-all z-10 select-none ${
-        theme === "dark"
-          ? "bg-[#18181b] border-zinc-800 text-zinc-100"
-          : "bg-white border-slate-200 text-slate-800"
-      }`}
+      className="w-[360px] h-full border-l border-border-primary flex flex-col flex-shrink-0 transition-all z-10 select-none bg-bg-secondary text-text-primary"
     >
       {/* Top Header */}
       <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">

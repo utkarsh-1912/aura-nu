@@ -1434,9 +1434,7 @@ export default function WorkspacePage({
       {/* MOBILE PORT LAYOUT */}
       {isMobile ? (
         <div id="mobile-viewport" className={`flex-grow w-full h-full flex flex-col overflow-hidden ${(activeNoteId && mobileTab === "notes") ? "pb-0" : "pb-16"}`}>
-          <header className={`px-4 py-3.5 border-b flex items-center justify-between select-none ${
-            activeTheme === "dark" ? "bg-zinc-950/80 border-zinc-850" : "bg-white/80 border-slate-200"
-          }`}>
+          <header className="px-4 py-3.5 border-b flex items-center justify-between select-none bg-bg-secondary/80 border-border-primary">
              <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsMobileSidebarOpen(true)}
@@ -1485,9 +1483,7 @@ export default function WorkspacePage({
 
                 {/* Sidebar Content container */}
                 <div
-                  className={`relative w-72 max-w-[85%] h-full flex flex-col shadow-2xl border-r transition-transform duration-300 ${
-                    activeTheme === "dark" ? "bg-zinc-950 text-zinc-100 border-zinc-800" : "bg-white text-slate-800 border-slate-200"
-                  }`}
+                  className="relative w-72 max-w-[85%] h-full flex flex-col shadow-2xl border-r border-border-primary bg-bg-secondary text-text-primary transition-transform duration-300"
                 >
                   {/* Sidebar Component */}
                   <div className="flex-grow overflow-y-auto" onClick={() => setIsMobileSidebarOpen(false)}>
@@ -1531,7 +1527,7 @@ export default function WorkspacePage({
               </div>
             )}
             {isTransitioning && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#FAFAFC]/90 dark:bg-[#09090b]/90 backdrop-blur-xs transition-opacity duration-200">
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg-primary/90 backdrop-blur-xs transition-opacity duration-200">
                 <div className="w-8 h-8 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
                 <span className="text-[10px] font-mono tracking-widest text-slate-400 dark:text-zinc-500 uppercase mt-3">
                   Switching Nodes...
@@ -1662,9 +1658,7 @@ export default function WorkspacePage({
           {(!activeNoteId || mobileTab === "home") && (
             <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-3 select-none">
               {isFabOpen && (
-                <div className={`p-1.5 rounded-2xl border flex flex-col gap-1 shadow-2xl transition-all ${
-                  activeTheme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
-                }`}>
+                <div className="p-1.5 rounded-2xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-1 shadow-2xl transition-all">
                   <button
                     onClick={handleNewNote}
                     className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 text-left w-full cursor-pointer"
@@ -1705,9 +1699,7 @@ export default function WorkspacePage({
           )}
 
           {(!activeNoteId || mobileTab !== "notes") && (
-            <nav className={`fixed bottom-0 left-0 right-0 h-16 border-t flex items-center justify-around z-30 shadow-md ${
-              activeTheme === "dark" ? "bg-[#141416]/95 border-zinc-850" : "bg-white/95 border-slate-200"
-            }`}>
+            <nav className="fixed bottom-0 left-0 right-0 h-16 border-t border-border-primary bg-bg-secondary/95 flex items-center justify-around z-30 shadow-md">
             {[
               { id: "home", label: "Home", icon: Home },
               { id: "notes", label: "Notes", icon: FileText },
@@ -1815,7 +1807,7 @@ export default function WorkspacePage({
 
           <div id="main-content-pane" className="flex-grow h-full flex overflow-hidden min-w-0 relative">
             {isTransitioning && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#FAFAFC]/90 dark:bg-[#09090b]/90 backdrop-blur-xs transition-opacity duration-200">
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg-primary/90 backdrop-blur-xs transition-opacity duration-200">
                 <div className="w-8 h-8 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
                 <span className="text-[10px] font-mono tracking-widest text-slate-400 dark:text-zinc-500 uppercase mt-3">
                   Syncing Workspace Node...
@@ -1853,7 +1845,7 @@ export default function WorkspacePage({
               ) : activeFolder === "Archive" ? (
                 <ArchiveView />
               ) : (
-                <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-[#FAFAFC] dark:bg-[#09090b] select-none animate-fade-in">
+                <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-bg-primary text-text-primary select-none animate-fade-in">
                   <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-zinc-900/60 flex items-center justify-center mb-4 text-slate-400 dark:text-zinc-500">
                     {activeFolder === "Favorites" ? (
                       <Star size={28} className="text-yellow-500 fill-yellow-500/10" />
@@ -1939,9 +1931,7 @@ export default function WorkspacePage({
       {/* 1. Simulated Voice Recorder overlay */}
       {showVoiceRecorder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4">
-          <div className={`w-full max-w-sm p-6 rounded-3xl border text-center flex flex-col items-center shadow-2xl ${
-            activeTheme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
-          }`}>
+          <div className="w-full max-w-sm p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl">
             <div className="relative mb-4 flex items-center justify-center">
               {voiceStatus === "recording" && (
                 <div className="absolute inset-0 w-16 h-16 rounded-full border border-red-500/30 animate-ping"></div>
@@ -1988,9 +1978,7 @@ export default function WorkspacePage({
       {/* 2. Drawing Scratchpad overlay */}
       {showDrawingPad && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4">
-          <div className={`w-full max-w-md p-6 rounded-3xl border flex flex-col gap-4 shadow-2xl ${
-            activeTheme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
-          }`}>
+          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-4 shadow-2xl">
             <div className="flex justify-between items-center">
               <h4 className="font-semibold text-sm">Quick Drawing Scratchpad</h4>
               <button
@@ -2016,9 +2004,7 @@ export default function WorkspacePage({
               onTouchStart={startDrawing}
               onTouchEnd={stopDrawing}
               onTouchMove={draw}
-              className={`w-full h-[180px] rounded-xl border border-dashed outline-none ${
-                activeTheme === "dark" ? "bg-zinc-950 border-zinc-800 cursor-crosshair" : "bg-slate-50 border-slate-300 cursor-crosshair"
-              }`}
+              className="w-full h-[180px] rounded-xl border border-dashed border-border-primary bg-bg-primary cursor-crosshair outline-none"
             ></canvas>
 
             <div className="flex gap-2 justify-end mt-2">
@@ -2030,9 +2016,7 @@ export default function WorkspacePage({
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                   }
                 }}
-                className={`px-3 py-2 border text-[11px] font-semibold rounded-lg ${
-                  activeTheme === "dark" ? "border-zinc-800 hover:bg-zinc-800" : "border-slate-200 hover:bg-slate-50"
-                } cursor-pointer`}
+                className="px-3 py-2 border border-border-primary bg-bg-primary hover:bg-bg-secondary text-text-secondary hover:text-text-primary text-[11px] font-semibold rounded-lg cursor-pointer transition-colors"
               >
                 Clear Sketch
               </button>

@@ -3,7 +3,7 @@ import { Archive } from "lucide-react";
 
 export default function ArchiveView() {
   return (
-    <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-[#FAFAFC] dark:bg-[#09090b] select-none animate-fade-in">
+    <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-bg-primary text-text-primary select-none animate-fade-in">
       <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 dark:bg-indigo-500/5 flex items-center justify-center mb-4 text-indigo-500">
         <Archive size={28} />
       </div>

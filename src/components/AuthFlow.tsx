@@ -203,36 +203,80 @@ export default function AuthFlow({
   return (
     <div
       id="auth-flow-viewport"
-      className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-200 ${
-        theme === "dark" ? "bg-[#09090b]" : "bg-[#f4f4f7]"
-      }`}
+      className="min-h-screen w-screen flex overflow-hidden transition-colors duration-200"
     >
-      {/* Absolute top return banner */}
-      <button
-        onClick={onBackToLanding}
-        className={`absolute top-6 left-6 flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-          theme === "dark"
-            ? "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:text-white hover:border-zinc-700"
-            : "border-slate-200 bg-white text-slate-500 hover:text-slate-900 hover:shadow-xs"
-        } cursor-pointer`}
-      >
-        <ArrowLeft size={13} />
-        Back to Landing Page
-      </button>
+      {/* Left decorative half for large screens */}
+      <div className="hidden lg:flex lg:w-1/2 h-screen bg-[#09090b] border-r border-zinc-800/60 flex-col justify-between p-16 text-zinc-100 relative overflow-hidden select-none">
+        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-tr from-purple-500/10 via-blue-500/5 to-transparent blur-[100px] rounded-full pointer-events-none"></div>
 
-      {/* Main glassmorphism card wrapper */}
-      <div
-        className={`w-full max-w-md p-8 rounded-3xl border flex flex-col transition-all relative ${
-          theme === "dark"
-            ? "bg-[#141416]/90 border-zinc-800/80 text-zinc-100 shadow-2xl shadow-black/40"
-            : "bg-white border-slate-200 text-slate-800 shadow-xl shadow-slate-100"
-        }`}
-      >
-        {/* Banner header logo */}
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-white mb-3 shadow-md shadow-blue-500/10">
-            <Sparkles size={18} className="animate-pulse" />
+        <div className="flex items-center gap-3 relative z-10">
+          <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain rounded-xl shadow-md" />
+          <span className="font-tomorrow font-bold text-lg tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">Aura Next</span>
+        </div>
+
+        <div className="max-w-md relative z-10 my-auto flex flex-col gap-6">
+          <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-3 py-1 rounded-full self-start">
+            Enterprise Workspace
+          </span>
+          <h1 className="font-display font-extrabold text-3xl xl:text-4xl tracking-tight text-white leading-tight">
+            Draft, align, & execute with intelligent context.
+          </h1>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Fusing offline-first workspace replication pipelines with proxy-safe Gemini completions to power developer OKRs and system logs.
+          </p>
+
+          <ul className="flex flex-col gap-3.5 mt-4">
+            {[
+              "Gemini generative shortcuts & context outlines",
+              "Microsecond local replication & cloud redundancy",
+              "Passkey sign-in, MFA keys, & Magic Login links",
+              "High-density spotlight palette navigation"
+            ].map((feat, i) => (
+              <li key={i} className="flex items-center gap-3 text-xs text-zinc-300 font-medium">
+                <div className="w-4 h-4 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                  ✓
+                </div>
+                <span>{feat}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="border-t border-zinc-800/80 pt-8 relative z-10">
+          <p className="text-xs italic leading-relaxed text-zinc-300">
+            "Aura Next's offline document replication is magic. We write markdown specs on flights and sync straight back to Stripe clusters seamlessly."
+          </p>
+          <div className="flex items-center gap-3 mt-4">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center font-bold text-white text-[10px]">
+              SS
+            </div>
+            <div className="flex flex-col">
+              <span className="font-semibold text-xs text-white">Sarah Sterling</span>
+              <span className="text-[10px] text-zinc-500">Principal Architect, Stripe</span>
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Right form container half */}
+      <div className="w-full lg:w-1/2 h-screen flex flex-col items-center p-4 overflow-y-auto transition-colors duration-200 bg-bg-primary text-text-primary">
+        <div className="flex flex-col gap-4 items-center w-full max-w-md animate-fade-in relative z-10 py-8 my-auto">
+        {/* Return banner */}
+        <button
+          onClick={onBackToLanding}
+          className="self-start flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border-primary bg-bg-secondary text-text-secondary hover:text-text-primary hover:shadow-xs transition-all cursor-pointer text-xs font-semibold"
+        >
+          <ArrowLeft size={13} />
+          Back to Landing Page
+        </button>
+
+        {/* Main glassmorphism card wrapper */}
+        <div
+          className="w-full p-8 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary shadow-xl dark:shadow-2xl dark:shadow-black/40 flex flex-col transition-all relative"
+        >
+        {/* Banner header logo */}
+        <div className={`flex flex-col items-center text-center mb-8 ${(flow === "login" || flow === "register") ? "lg:hidden" : ""}`}>
+          <img src="/logo.png" alt="Aura Logo" className="w-10 h-10 object-contain rounded-2xl mb-3 shadow-md shadow-blue-500/10" />
           <h2 className="font-display font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
             {flow === "login" && "Welcome back to Aura"}
             {flow === "register" && "Form your strategy workspace"}
@@ -285,11 +329,7 @@ export default function AuthFlow({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className={`w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border outline-none ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                      : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                  }`}
+                  className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-border-primary bg-bg-primary text-text-primary focus:bg-bg-secondary focus:border-blue-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -309,11 +349,7 @@ export default function AuthFlow({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className={`w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border outline-none ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                      : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                  }`}
+                  className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-border-primary bg-bg-primary text-text-primary focus:bg-bg-secondary focus:border-blue-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -344,11 +380,7 @@ export default function AuthFlow({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className={`w-full text-xs pl-9 pr-10 py-2.5 rounded-xl border outline-none ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                      : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                  }`}
+                  className="w-full text-xs pl-9 pr-10 py-2.5 rounded-xl border border-border-primary bg-bg-primary text-text-primary focus:bg-bg-secondary focus:border-blue-500 outline-none transition-all"
                 />
                 <button
                   type="button"
@@ -397,7 +429,7 @@ export default function AuthFlow({
                 type="text"
                 maxLength={6}
                 placeholder="405111"
-                className="w-full text-center tracking-widest text-lg font-mono py-2.5 rounded-xl border outline-none bg-slate-50 border-slate-200 dark:bg-zinc-950 dark:border-zinc-800 dark:text-white focus:border-blue-500"
+                className="w-full text-center tracking-widest text-lg font-mono py-2.5 rounded-xl border border-border-primary bg-bg-primary text-text-primary focus:bg-bg-secondary focus:border-blue-500 outline-none transition-all"
                 required
               />
             </div>
@@ -417,7 +449,7 @@ export default function AuthFlow({
                   placeholder="123456"
                   value={code2fa}
                   onChange={(e) => setCode2fa(e.target.value.replace(/\D/g, ""))}
-                  className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border outline-none bg-slate-50 border-slate-200 dark:bg-zinc-950 dark:border-zinc-800 dark:text-white focus:border-blue-500 font-mono tracking-widest"
+                  className="w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border border-border-primary bg-bg-primary text-text-primary focus:bg-bg-secondary focus:border-blue-500 outline-none font-mono tracking-widest transition-all"
                   required
                 />
               </div>
@@ -432,7 +464,7 @@ export default function AuthFlow({
                   type="checkbox"
                   checked={rememberMe}
                   onChange={() => setRememberMe(!rememberMe)}
-                  className="rounded border-slate-200 text-blue-500 focus:ring-0 cursor-pointer"
+                  className="rounded border-border-primary text-blue-500 focus:ring-0 cursor-pointer"
                 />
                 Remember my device
               </label>
@@ -452,7 +484,7 @@ export default function AuthFlow({
                 type="checkbox"
                 checked={acceptTerms}
                 onChange={() => setAcceptTerms(!acceptTerms)}
-                className="mt-0.5 rounded border-slate-200 text-blue-500 focus:ring-0 cursor-pointer"
+                className="mt-0.5 rounded border-border-primary text-blue-500 focus:ring-0 cursor-pointer"
               />
               <span>
                 I agree to the{" "}
@@ -525,7 +557,7 @@ export default function AuthFlow({
 
         {/* Social Logins + Passkey integration (Login and register only) */}
         {(flow === "login" || flow === "register") && (
-          <div className="mt-6 pt-6 border-t border-slate-100 dark:border-zinc-800 flex flex-col gap-3">
+          <div className="mt-6 pt-6 border-t border-border-primary flex flex-col gap-3">
             <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-center text-slate-400 dark:text-zinc-500 block mb-1">
               Enterprise Identity Providers
             </span>
@@ -533,11 +565,7 @@ export default function AuthFlow({
             {/* Passkey Fast Access button */}
             <button
               onClick={handleBiometricTrigger}
-              className={`w-full py-2.5 border rounded-xl flex items-center justify-center gap-2.5 text-xs font-semibold hover:shadow-xs transition-all ${
-                theme === "dark"
-                  ? "border-zinc-800 bg-zinc-900/40 text-zinc-200 hover:bg-zinc-850 hover:border-zinc-700"
-                  : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-white hover:border-slate-300"
-              } cursor-pointer`}
+              className="w-full py-2.5 border border-border-primary bg-bg-primary text-text-secondary hover:text-text-primary hover:bg-bg-secondary hover:shadow-xs transition-all flex items-center justify-center gap-2.5 text-xs font-semibold cursor-pointer rounded-xl"
             >
               <Fingerprint size={14} className="text-blue-500" />
               <span>Authenticate using Passkey</span>
@@ -547,11 +575,7 @@ export default function AuthFlow({
               <button
                 type="button"
                 onClick={() => triggerSocialLogin("Google")}
-                className={`py-2 border rounded-xl flex items-center justify-center gap-2 text-xs transition-colors ${
-                  theme === "dark"
-                    ? "border-zinc-800/80 hover:bg-zinc-900/60 text-zinc-300"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-600"
-                } cursor-pointer`}
+                className="py-2 border border-border-primary bg-bg-primary text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors flex items-center justify-center gap-2 text-xs cursor-pointer rounded-xl"
               >
                 <Chrome size={12} className="text-red-500" />
                 <span>Google</span>
@@ -560,11 +584,7 @@ export default function AuthFlow({
               <button
                 type="button"
                 onClick={() => triggerSocialLogin("GitHub")}
-                className={`py-2 border rounded-xl flex items-center justify-center gap-2 text-xs transition-colors ${
-                  theme === "dark"
-                    ? "border-zinc-800/80 hover:bg-zinc-900/60 text-zinc-300"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-600"
-                } cursor-pointer`}
+                className="py-2 border border-border-primary bg-bg-primary text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors flex items-center justify-center gap-2 text-xs cursor-pointer rounded-xl"
               >
                 <Github size={12} />
                 <span>GitHub</span>
@@ -573,14 +593,14 @@ export default function AuthFlow({
           </div>
         )}
       </div>
+      </div>
+      </div>
 
       {/* Biometric Scanning Pop-over Modal Dialog */}
       {showBiometrics && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none">
           <div
-            className={`w-[280px] p-6 rounded-2xl border text-center flex flex-col items-center shadow-2xl ${
-              theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
-            }`}
+            className="w-[280px] p-6 rounded-2xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl"
           >
             <div className="relative mb-4 flex items-center justify-center">
               <div className="absolute inset-0 w-16 h-16 rounded-full border border-blue-500/30 animate-ping"></div>

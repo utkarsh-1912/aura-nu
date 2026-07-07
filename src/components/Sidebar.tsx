@@ -721,11 +721,7 @@ export default function Sidebar({
       id="sidebar-container"
       animate={{ width: isSidebarCollapsed ? 72 : 280 }}
       transition={{ duration: 0.2, ease: "easeInOut" }}
-      className={`h-full border-r relative flex flex-col flex-shrink-0 transition-colors duration-200 select-none ${
-        theme === "dark"
-          ? "bg-[#09090b] border-zinc-800 text-zinc-300"
-          : "bg-[#FAFAFC] border-slate-200 text-slate-700"
-      }`}
+      className="h-full border-r border-border-primary relative flex flex-col flex-shrink-0 transition-colors duration-200 select-none bg-bg-primary text-text-secondary"
     >
       {/* Sidebar Collapse Toggle */}
       <button
@@ -1167,11 +1163,7 @@ export default function Sidebar({
         >
           <div className="relative flex-shrink-0">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center font-display font-bold text-white shadow-sm border ${
-                theme === "dark"
-                  ? "bg-[#18181b] border-zinc-700"
-                  : "bg-white border-slate-200"
-              }`}
+              className="w-8 h-8 rounded-full flex items-center justify-center font-display font-bold text-white shadow-sm border border-border-primary bg-bg-secondary"
             >
               <div
                 className={`w-6.5 h-6.5 rounded-full flex items-center justify-center text-[10px] text-white bg-gradient-to-tr from-indigo-500 to-pink-500`}

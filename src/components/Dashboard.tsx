@@ -431,9 +431,7 @@ export default function Dashboard({
   return (
     <div
       id="dashboard-view-panel"
-      className={`flex-grow h-full overflow-y-auto p-6 md:p-8 transition-colors duration-200 ${
-        theme === "dark" ? "bg-[#09090b]" : "bg-[#FAFAFC]"
-      }`}
+      className="flex-grow h-full overflow-y-auto p-6 md:p-8 transition-colors duration-200 bg-bg-primary text-text-primary"
     >
       {/* Workspace Header Banner */}
       <div className="max-w-5xl mx-auto mb-6">
@@ -523,7 +521,7 @@ export default function Dashboard({
               {/* Analytics Summary */}
               <div className="grid grid-cols-3 gap-4">
                 <div className={`p-4 rounded-2xl border ${
-                  theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                  "bg-bg-secondary border-border-primary"
                 } shadow-xs`}>
                   <span className="text-slate-400 dark:text-zinc-500 text-xs font-medium">Total Notes</span>
                   <div className="font-display font-black text-2xl mt-1 text-slate-900 dark:text-white">{totalNotesCount}</div>
@@ -531,7 +529,7 @@ export default function Dashboard({
                 </div>
 
                 <div className={`p-4 rounded-2xl border ${
-                  theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                  "bg-bg-secondary border-border-primary"
                 } shadow-xs`}>
                   <span className="text-slate-400 dark:text-zinc-500 text-xs font-medium">Words Logged</span>
                   <div className="font-display font-black text-2xl mt-1 text-slate-900 dark:text-white">{wordCountSum}</div>
@@ -539,7 +537,7 @@ export default function Dashboard({
                 </div>
 
                 <div className={`p-4 rounded-2xl border ${
-                  theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                  "bg-bg-secondary border-border-primary"
                 } shadow-xs`}>
                   <span className="text-slate-400 dark:text-zinc-500 text-xs font-medium">Members</span>
                   <div className="font-display font-black text-2xl mt-1 text-slate-900 dark:text-white">{(activeWorkspace?.members || []).length}</div>
@@ -549,7 +547,7 @@ export default function Dashboard({
 
               {/* Recent Notes Table (With Action Menus) */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
@@ -663,7 +661,7 @@ export default function Dashboard({
               {/* Shared Documents Panel */}
               {sharedNotes.length > 0 && (
                 <div className={`p-5 rounded-2xl border ${
-                  theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                  "bg-bg-secondary border-border-primary"
                 } shadow-xs`}>
                   <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
                     <Share2 size={15} className="text-emerald-500" />
@@ -691,7 +689,7 @@ export default function Dashboard({
 
               {/* AI History Logs & Insights */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
                   <Sparkles size={15} className="text-indigo-500 animate-pulse" />
@@ -724,7 +722,7 @@ export default function Dashboard({
               
               {/* Reminders & Actions */}
               <div className={`p-5 rounded-2xl border flex flex-col h-[280px] ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
                   <CheckCircle2 size={15} className="text-blue-500" />
@@ -799,7 +797,7 @@ export default function Dashboard({
 
               {/* Mini Calendar */}
               <div className={`p-4 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
@@ -834,7 +832,7 @@ export default function Dashboard({
 
               {/* Active Members Bar */}
               <div className={`p-4 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100 mb-3 flex justify-between items-center">
                   <span>Workspace Access</span>
@@ -869,7 +867,7 @@ export default function Dashboard({
         {/* VIEW 2: DEPARTMENTS & PROJECTS (Org Tree) */}
         {activeTab === "org" && (
           <div className={`p-6 rounded-2xl border ${
-            theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+            "bg-bg-secondary border-border-primary"
           } shadow-xs`}>
             
             {/* Breadcrumb Navigation */}
@@ -1158,7 +1156,7 @@ export default function Dashboard({
               
               {/* Member lists */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-4">
                   Active Workspace Team ({activeWorkspace?.members?.length || 0})
@@ -1189,7 +1187,7 @@ export default function Dashboard({
 
               {/* Pending invitations table */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-3 flex justify-between items-center">
                   <span>Pending Outbound Invites</span>
@@ -1230,7 +1228,7 @@ export default function Dashboard({
               {/* Send Invite Form */}
               {hasPermission("members") ? (
                 <div className={`p-5 rounded-2xl border ${
-                  theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                  "bg-bg-secondary border-border-primary"
                 } shadow-xs`}>
                   <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
                     <UserPlus size={13} className="text-blue-500" />
@@ -1288,7 +1286,7 @@ export default function Dashboard({
 
               {/* Domain Restriction Policies */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
                   <Globe size={13} className="text-indigo-500" />
@@ -1339,7 +1337,7 @@ export default function Dashboard({
               
               {/* Audit logs table */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-3 flex items-center gap-1.5">
                   <Shield size={14} className="text-blue-500" />
@@ -1373,7 +1371,7 @@ export default function Dashboard({
 
               {/* Compliance & Security Panel */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-3">
                   Security Policies & SSO Compliance
@@ -1405,7 +1403,7 @@ export default function Dashboard({
               
               {/* API Key management */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
                   <Key size={13} className="text-blue-500" />
@@ -1449,7 +1447,7 @@ export default function Dashboard({
 
               {/* Integrations panel */}
               <div className={`p-5 rounded-2xl border ${
-                theme === "dark" ? "bg-[#18181b] border-zinc-800" : "bg-white border-slate-200"
+                "bg-bg-secondary border-border-primary"
               } shadow-xs`}>
                 <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
                   <Globe size={13} className="text-indigo-500" />
@@ -1486,9 +1484,7 @@ export default function Dashboard({
       {/* CONFIRMATION DIALOG MODAL FOR CROSS-WORKSPACE ACTIONS */}
       {selectedNoteForAction && crossActionType && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none">
-          <div className={`p-5 rounded-2xl border max-w-sm w-full shadow-2xl ${
-            theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-200" : "bg-white border-slate-200 text-slate-800"
-          }`}>
+          <div className="p-5 rounded-2xl border border-border-primary max-w-sm w-full shadow-2xl bg-bg-secondary text-text-primary">
             <div className="flex items-center gap-2 text-amber-500 mb-3">
               <AlertTriangle size={18} />
               <h4 className="font-bold text-sm uppercase tracking-tight">Confirm Isolate Action</h4>

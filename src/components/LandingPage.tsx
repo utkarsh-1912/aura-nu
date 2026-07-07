@@ -171,7 +171,7 @@ export default function LandingPage({
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
               <Sparkles size={16} className="animate-pulse" />
             </div>
-            <span className="font-display font-bold text-base tracking-tight text-slate-900 dark:text-white">
+            <span className="font-tomorrow font-bold text-base tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
               Aura Next
             </span>
           </div>
@@ -293,7 +293,7 @@ export default function LandingPage({
               </div>
               <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
                 <Lock size={10} />
-                app.auranotes.io/gutkarshlb/strategy-minutes
+                app.auranext.io/w/strategy/min
               </div>
               <div className="w-12"></div>
             </div>
@@ -568,7 +568,7 @@ export default function LandingPage({
               <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center text-white">
                 <Sparkles size={14} />
               </div>
-              <span className="font-display font-bold text-sm tracking-tight text-slate-900 dark:text-white">
+              <span className="font-tomorrow font-bold text-sm tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
                 Aura Next
               </span>
             </div>

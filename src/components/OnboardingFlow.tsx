@@ -92,9 +92,7 @@ export default function OnboardingFlow({
   return (
     <div
       id="onboarding-viewport"
-      className={`min-h-screen flex flex-col items-center justify-center p-6 transition-colors duration-200 ${
-        theme === "dark" ? "bg-[#09090b]" : "bg-[#f4f4f7]"
-      }`}
+      className="min-h-screen flex flex-col items-center justify-center p-6 transition-colors duration-200 bg-bg-primary text-text-primary"
     >
       {/* Top Wizard Steps Tracker */}
       <div className="w-full max-w-lg mb-8 flex items-center justify-between px-2 select-none">
@@ -124,11 +122,7 @@ export default function OnboardingFlow({
 
       {/* Main Multi-step Card container */}
       <div
-        className={`w-full max-w-lg p-8 rounded-3xl border flex flex-col min-h-[440px] justify-between relative transition-all ${
-          theme === "dark"
-            ? "bg-[#141416]/95 border-zinc-800/80 text-zinc-100 shadow-2xl"
-            : "bg-white border-slate-200 text-slate-800 shadow-xl shadow-slate-100"
-        }`}
+        className="w-full max-w-lg p-8 rounded-3xl border border-border-primary flex flex-col min-h-[440px] justify-between relative transition-all bg-bg-secondary text-text-primary shadow-xl dark:shadow-2xl dark:shadow-black/40"
       >
         {/* STEP 1: Welcome & Onboarding Intention */}
         {step === 1 && (

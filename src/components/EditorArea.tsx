@@ -600,7 +600,7 @@ export default function EditorArea({
 
   if (!note) {
     return (
-      <div id="editor-empty-state" className="flex-grow h-full flex flex-col items-center justify-center p-8 bg-white dark:bg-[#09090b]">
+      <div id="editor-empty-state" className="flex-grow h-full flex flex-col items-center justify-center p-8 bg-bg-primary text-text-primary">
         <div className="max-w-md text-center flex flex-col items-center">
           <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-zinc-900 flex items-center justify-center mb-6 shadow-sm border border-slate-100 dark:border-zinc-800">
             <FileText size={32} className="text-slate-400 dark:text-zinc-500" />
@@ -1518,7 +1518,7 @@ export default function EditorArea({
       id="editor-pane-container"
       className={`flex-grow h-full flex flex-col relative select-text transition-colors duration-200 ${
         isFocusMode ? "max-w-3xl mx-auto" : "w-full"
-      } ${theme === "dark" ? "bg-[#09090b] text-zinc-100" : "bg-white text-slate-900"}`}
+      } bg-bg-primary text-text-primary`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -2453,11 +2453,7 @@ export default function EditorArea({
 
       {/* Bottom Status Bar */}
       {!isFocusMode && (
-        <div className={`px-6 py-2 border-t hidden md:flex items-center justify-between text-xs select-none ${
-          theme === "dark"
-            ? "border-zinc-800/80 bg-[#09090b] text-zinc-500"
-            : "border-slate-200/60 bg-[#FAFAFC] text-slate-400"
-        }`}>
+        <div className="px-6 py-2 border-t border-border-primary hidden md:flex items-center justify-between text-xs select-none bg-bg-primary text-text-secondary">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <span className="font-semibold text-slate-700 dark:text-zinc-400">{note.wordCount}</span> words
@@ -2643,9 +2639,7 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
       <div
-        className={`w-full max-w-md rounded-3xl shadow-2xl border overflow-hidden p-5 flex flex-col gap-4 animate-fade-in ${
-          theme === "dark" ? "bg-[#141416] border-zinc-800 text-zinc-200" : "bg-white border-slate-200 text-slate-800"
-        }`}
+        className="w-full max-w-md rounded-3xl shadow-2xl border border-border-primary overflow-hidden p-5 flex flex-col gap-4 animate-fade-in bg-bg-secondary text-text-primary"
       >
         <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 dark:border-zinc-800/80">
           <h3 className="font-display font-semibold text-sm flex items-center gap-2">

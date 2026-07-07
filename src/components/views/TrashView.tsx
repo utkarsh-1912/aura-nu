@@ -8,7 +8,7 @@ interface TrashViewProps {
 
 export default function TrashView({ hasNotes, onEmptyTrash }: TrashViewProps) {
   return (
-    <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-[#FAFAFC] dark:bg-[#09090b] select-none animate-fade-in">
+    <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-bg-primary text-text-primary select-none animate-fade-in">
       <div className="w-16 h-16 rounded-3xl bg-rose-500/10 dark:bg-rose-500/5 flex items-center justify-center mb-4 text-rose-500">
         <Trash2 size={28} />
       </div>
