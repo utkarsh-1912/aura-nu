@@ -1444,7 +1444,7 @@ export default function WorkspacePage({
                 <Menu size={16} />
               </button>
               <span className="font-display font-bold text-xs tracking-tight">
-                {mobileTab === "home" && "Dashboard Analytics"}
+                {mobileTab === "home" && "Dashboard"}
                 {mobileTab === "notes" && (activeNoteId ? "Document Editor" : "Notes List")}
                 {mobileTab === "ai" && "Gemini Co-Pilot"}
                 {mobileTab === "settings" && "Aura Settings"}
