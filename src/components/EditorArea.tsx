@@ -43,6 +43,7 @@ import {
   FileDown,
   Printer,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
   Tag
 } from "lucide-react";
@@ -136,6 +137,8 @@ export default function EditorArea({
   const [localContent, setLocalContent] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [mobileSubTab, setMobileSubTab] = useState<"edit" | "preview">("edit");
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
   const [showFindBar, setShowFindBar] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [editingBlockIndex, setEditingBlockIndex] = useState<number | null>(null);
@@ -189,6 +192,18 @@ export default function EditorArea({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showMoreMenu]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (showStatusDropdown && statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showStatusDropdown]);
 
   // States to keep track of per-code-block configurations
   const [codeBlockWordWrap, setCodeBlockWordWrap] = useState<Record<string, boolean>>({});
@@ -1516,9 +1531,7 @@ export default function EditorArea({
   return (
     <div
       id="editor-pane-container"
-      className={`flex-grow h-full flex flex-col relative select-text transition-colors duration-200 ${
-        isFocusMode ? "max-w-3xl mx-auto" : "w-full"
-      } bg-bg-primary text-text-primary`}
+      className="flex-grow h-full flex flex-col relative select-text transition-colors duration-200 w-full bg-bg-primary text-text-primary"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -1545,7 +1558,7 @@ export default function EditorArea({
         }`}>
           {/* Row 1: Title, Status, Auto-save state AND Right Action buttons */}
           <div className="flex items-center justify-between w-full flex-wrap gap-3">
-            <div className="flex items-center gap-3 min-w-0 flex-grow">
+            <div className="flex items-center gap-2.5 min-w-0 flex-grow">
               <input
                 id="active-note-title-input"
                 type="text"
@@ -1556,58 +1569,77 @@ export default function EditorArea({
                     onUpdateNote({ ...note, title: "Untitled Note", updatedAt: new Date().toISOString() });
                   }
                 }}
-                className="font-display font-semibold text-base border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100 placeholder-slate-400 flex-grow max-w-xl truncate"
+                className="font-display font-semibold text-base border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100 placeholder-slate-400 max-w-[200px] sm:max-w-md truncate"
                 placeholder="Untitled Note"
                 readOnly={note.isLocked}
               />
+
+              {/* Status Dropdown Pill grouped directly with the heading */}
+              {!note.isTrashed && !note.isArchived && (
+                <div className="relative shrink-0" ref={statusDropdownRef}>
+                  <button
+                    onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                      note.status === "Published"
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                        : note.status === "In Review"
+                        ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
+                        : "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-zinc-400"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      note.status === "Published"
+                        ? "bg-emerald-500"
+                        : note.status === "In Review"
+                        ? "bg-amber-500"
+                        : "bg-slate-400 dark:bg-zinc-500"
+                    }`}></span>
+                    <span>{note.status || "Draft"}</span>
+                    <ChevronDown size={10} className="opacity-60 shrink-0" />
+                  </button>
+
+                  {showStatusDropdown && (
+                    <div className={`absolute left-0 mt-1.5 w-36 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
+                      theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
+                    }`}>
+                      {(["Draft", "In Review", "Published"] as const).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => {
+                            handleUpdateStatus(status);
+                            setShowStatusDropdown(false);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${
+                            note.status === status ? "font-semibold text-blue-500" : ""
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            status === "Published"
+                              ? "bg-emerald-500"
+                              : status === "In Review"
+                              ? "bg-amber-500"
+                              : "bg-slate-400 dark:bg-zinc-500"
+                          }`}></span>
+                          <span>{status}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right Action buttons */}
-            <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {/* Clipboard feedback indicator */}
               {copyFeedback && (
-                <span className="text-[10px] text-emerald-500 font-medium font-mono animate-fade-in">
+                <span className="text-[10px] text-emerald-500 font-medium font-mono animate-fade-in hidden sm:inline">
                   Link copied!
                 </span>
               )}
 
-              {/* Publish / Draft Workflow buttons */}
-              {!note.isTrashed && !note.isArchived && (
-                <div className="flex items-center gap-1">
-                  {note.status === "Published" ? (
-                    <button
-                      onClick={() => handleUpdateStatus("Draft")}
-                      className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-400 cursor-pointer"
-                    >
-                      Unpublish
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => handleUpdateStatus("In Review")}
-                        className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border cursor-pointer transition-colors ${
-                          note.status === "In Review"
-                            ? "bg-amber-500/10 border-amber-500/30 text-amber-500"
-                            : "border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                        }`}
-                      >
-                        In Review
-                      </button>
-                      <button
-                        onClick={() => handleUpdateStatus("Published")}
-                        className="px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs cursor-pointer"
-                      >
-                        Publish
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              <div className="w-px h-5 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
-
-              {/* View Mode controls */}
-              <div className="flex items-center border border-slate-200/80 dark:border-zinc-800 rounded-xl overflow-hidden p-0.5 bg-slate-100/60 dark:bg-zinc-950/40">
+              {/* View Mode controls - Desktop only */}
+              <div className="hidden md:flex items-center border border-slate-200/80 dark:border-zinc-800 rounded-xl overflow-hidden p-0.5 bg-slate-100/60 dark:bg-zinc-950/40">
                 <button
                   id="editor-edit-mode-btn"
                   onClick={() => setViewMode("edit")}
@@ -1646,12 +1678,12 @@ export default function EditorArea({
                 </button>
               </div>
 
-              {/* Version History */}
+              {/* Version History - Desktop only */}
               <button
                 id="version-history-btn"
                 onClick={() => setShowHistory(!showHistory)}
                 title="Version History"
-                className={`p-2 rounded-xl border transition-colors ${
+                className={`hidden md:block p-2 rounded-xl border transition-colors ${
                   showHistory
                     ? "bg-blue-50 text-blue-500 border-blue-200 dark:bg-zinc-800 dark:text-white"
                     : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
@@ -1660,7 +1692,7 @@ export default function EditorArea({
                 <History size={14} />
               </button>
 
-              {/* Find/Search within Note */}
+              {/* Find/Search within Note - Desktop only */}
               <button
                 onClick={() => {
                   const next = !showFindBar;
@@ -1668,7 +1700,7 @@ export default function EditorArea({
                   if (!next) setFindQuery("");
                 }}
                 title="Find text in note"
-                className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                className={`hidden md:block p-2 rounded-xl border transition-colors cursor-pointer ${
                   showFindBar
                     ? "bg-blue-50 text-blue-500 border-blue-200 dark:bg-zinc-800 dark:text-white"
                     : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
@@ -1677,14 +1709,12 @@ export default function EditorArea({
                 <Search size={14} />
               </button>
 
-
-
-              {/* Focus Mode button */}
+              {/* Focus Mode button - Desktop only */}
               <button
                 id="focus-mode-btn"
                 onClick={() => setIsFocusMode(!isFocusMode)}
                 title="Focus Writing Mode (Alt+F)"
-                className="p-2 rounded-xl border bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white cursor-pointer"
+                className="hidden md:block p-2 rounded-xl border bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white cursor-pointer"
               >
                 <Maximize2 size={14} />
               </button>
@@ -1694,45 +1724,163 @@ export default function EditorArea({
                 <button
                   id="ai-panel-open-editor-btn"
                   onClick={onOpenAiAssistant}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
                 >
                   <Sparkles size={13} />
-                  <span>Ask AI</span>
+                  <span className="hidden sm:inline">Ask AI</span>
                 </button>
               )}
 
               {/* More Actions (⋮) Dropdown */}
-            <div ref={moreMenuRef} className="relative">
-              <button
-                id="more-actions-trigger"
-                onClick={() => {
-                  setShowMoreMenu(!showMoreMenu);
-                  setShowMoveSubmenu(false);
-                  setShowCopySubmenu(false);
-                  setShowFolderSubmenu(false);
-                }}
-                title="More Actions"
-                className={`p-2 rounded-xl border transition-colors ${
-                  showMoreMenu
-                    ? "bg-slate-100 dark:bg-zinc-800"
-                    : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
-                } cursor-pointer`}
-              >
-                <MoreVertical size={14} />
-              </button>
-
-              {showMoreMenu && (
-                <div
-                  id="more-actions-dropdown"
-                  className={`absolute right-0 mt-2 w-56 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300"
-                      : "bg-white border-slate-200 text-slate-700"
-                  }`}
+              <div ref={moreMenuRef} className="relative">
+                <button
+                  id="more-actions-trigger"
+                  onClick={() => {
+                    setShowMoreMenu(!showMoreMenu);
+                    setShowMoveSubmenu(false);
+                    setShowCopySubmenu(false);
+                    setShowFolderSubmenu(false);
+                  }}
+                  title="More Actions"
+                  className={`p-2 rounded-xl border transition-colors ${
+                    showMoreMenu
+                      ? "bg-slate-100 dark:bg-zinc-800"
+                      : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
+                  } cursor-pointer`}
                 >
-                  {/* Pin action */}
-                  <button
-                    onClick={handleTogglePin}
+                  <MoreVertical size={14} />
+                </button>
+
+                {showMoreMenu && (
+                  <div
+                    id="more-actions-dropdown"
+                    className={`absolute right-0 mt-2 w-56 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
+                      theme === "dark"
+                        ? "bg-zinc-950 border-zinc-800 text-zinc-300"
+                        : "bg-white border-slate-200 text-slate-700"
+                    }`}
+                  >
+                    {/* Mobile Only Actions Group */}
+                    {isMobile && (
+                      <>
+                        <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-3 py-1.5">
+                          Editor View
+                        </div>
+                        <div className="flex gap-1 px-2 pb-2 justify-between">
+                          <button
+                            onClick={() => {
+                              setViewMode("edit");
+                              setShowMoreMenu(false);
+                            }}
+                            className={`px-2 py-1 rounded-md text-[10px] text-center flex-1 font-semibold cursor-pointer ${
+                              viewMode === "edit"
+                                ? "bg-blue-500 text-white"
+                                : "bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                            }`}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => {
+                              setViewMode("split");
+                              setShowMoreMenu(false);
+                            }}
+                            className={`px-2 py-1 rounded-md text-[10px] text-center flex-1 font-semibold cursor-pointer ${
+                              viewMode === "split"
+                                ? "bg-blue-500 text-white"
+                                : "bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                            }`}
+                          >
+                            Split
+                          </button>
+                          <button
+                            onClick={() => {
+                              setViewMode("preview");
+                              setShowMoreMenu(false);
+                            }}
+                            className={`px-2 py-1 rounded-md text-[10px] text-center flex-1 font-semibold cursor-pointer ${
+                              viewMode === "preview"
+                                ? "bg-blue-500 text-white"
+                                : "bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                            }`}
+                          >
+                            Preview
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setShowHistory(!showHistory);
+                            setShowMoreMenu(false);
+                          }}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                        >
+                          <History size={13} />
+                          <span>Version History</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowFindBar(!showFindBar);
+                            setFindQuery("");
+                            setShowMoreMenu(false);
+                          }}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                        >
+                          <Search size={13} />
+                          <span>Find in Note</span>
+                        </button>
+
+                        {!note.isTrashed && !note.isArchived && (
+                          <div className="flex flex-col gap-0.5 border-t border-slate-100 dark:border-zinc-800/80 pt-1.5 mt-1.5">
+                            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-3 py-1">
+                              Publishing
+                            </div>
+                            {note.status === "Published" ? (
+                              <button
+                                onClick={() => {
+                                  handleUpdateStatus("Draft");
+                                  setShowMoreMenu(false);
+                                }}
+                                className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                              >
+                                <Eye size={13} />
+                                <span>Revert to Draft</span>
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    handleUpdateStatus("In Review");
+                                    setShowMoreMenu(false);
+                                  }}
+                                  className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                >
+                                  <Eye size={13} />
+                                  <span>Submit for Review</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleUpdateStatus("Published");
+                                    setShowMoreMenu(false);
+                                  }}
+                                  className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-semibold"
+                                >
+                                  <Eye size={13} />
+                                  <span>Publish Live</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1.5"></div>
+                      </>
+                    )}
+
+                    {/* Pin action */}
+                    <button
+                      onClick={handleTogglePin}
                     className={`flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 ${
                       note.isPinned ? "text-amber-500 font-medium animate-pulse" : ""
                     }`}
@@ -2122,7 +2270,7 @@ export default function EditorArea({
 
       {/* Formatting Toolbar */}
       {viewMode !== "preview" && !isFocusMode && (
-        <div className={`px-4 py-1.5 border-b flex flex-wrap items-center gap-1 select-none ${
+        <div className={`px-4 py-1.5 border-b flex flex-row items-center gap-1 select-none overflow-x-auto scrollbar-none whitespace-nowrap md:flex-wrap md:overflow-visible md:whitespace-normal ${
           theme === "dark" ? "border-zinc-800/50 bg-zinc-950/10" : "border-slate-100 bg-slate-50/20"
         }`}>
           {/* History Operations */}
@@ -2130,7 +2278,7 @@ export default function EditorArea({
             onClick={handleUndo}
             disabled={undoStack.length === 0}
             title="Undo (Ctrl+Z)"
-            className={`p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer`}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer shrink-0"
           >
             <Undo size={14} />
           </button>
@@ -2138,18 +2286,18 @@ export default function EditorArea({
             onClick={handleRedo}
             disabled={redoStack.length === 0}
             title="Redo (Ctrl+Y)"
-            className={`p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer`}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer shrink-0"
           >
             <Redo size={14} />
           </button>
 
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
+          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
 
           {/* Text treatments */}
           <button
             onClick={() => toggleFormat("bold")}
             title="Bold"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
               activeStyles.bold
                 ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
                 : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
@@ -2160,7 +2308,7 @@ export default function EditorArea({
           <button
             onClick={() => toggleFormat("italic")}
             title="Italic"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
               activeStyles.italic
                 ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
                 : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
@@ -2171,7 +2319,7 @@ export default function EditorArea({
           <button
             onClick={() => toggleFormat("underline")}
             title="Underline"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
               activeStyles.underline
                 ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
                 : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
@@ -2180,49 +2328,49 @@ export default function EditorArea({
             <Underline size={14} />
           </button>
           
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
+          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
 
           {/* Block structures */}
-          <button onClick={() => insertMarkdown("# ")} title="Header 1" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("# ")} title="Header 1" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <Heading1 size={14} />
           </button>
-          <button onClick={() => insertMarkdown("## ")} title="Header 2" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("## ")} title="Header 2" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <Heading2 size={14} />
           </button>
 
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
+          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
 
           {/* Lists */}
-          <button onClick={() => insertMarkdown("- ")} title="Bullet List" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("- ")} title="Bullet List" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <List size={14} />
           </button>
-          <button onClick={() => insertMarkdown("1. ")} title="Numbered List" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("1. ")} title="Numbered List" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <ListOrdered size={14} />
           </button>
-          <button onClick={() => insertMarkdown("- [ ] ")} title="Checklist" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("- [ ] ")} title="Checklist" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <CheckSquare size={14} />
           </button>
 
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
+          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
 
           {/* Blocks & Attachments */}
-          <button onClick={() => insertMarkdown("```typescript\n", "\n```")} title="Code Block" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("```typescript\n", "\n```")} title="Code Block" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <Code size={14} />
           </button>
-          <button onClick={() => insertMarkdown("| Header 1 | Header 2 |\n|---|---|\n| Value 1 | Value 2 |\n")} title="Insert Table" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("| Header 1 | Header 2 |\n|---|---|\n| Value 1 | Value 2 |\n")} title="Insert Table" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <TableIcon size={14} />
           </button>
-          <button onClick={() => insertMarkdown("[Link Text](", ")")} title="Add Link" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => insertMarkdown("[Link Text](", ")")} title="Add Link" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <Link size={14} />
           </button>
-          <button onClick={() => setIsImageModalOpen(true)} title="Insert/Upload Image" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={() => setIsImageModalOpen(true)} title="Insert/Upload Image" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <Image size={14} />
           </button>
-          <button onClick={handleFileUploadMock} title="Attach Simulated File" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer">
+          <button onClick={handleFileUploadMock} title="Attach Simulated File" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
             <Paperclip size={14} />
           </button>
 
-          <span className="ml-auto text-[10px] font-mono opacity-50">
+          <span className="hidden md:inline-block md:ml-auto text-[10px] font-mono opacity-50 shrink-0">
             Type <strong className="text-blue-500">/</strong> for blocks
           </span>
         </div>

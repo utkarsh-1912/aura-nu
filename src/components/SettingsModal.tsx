@@ -766,10 +766,6 @@ export default function SettingsModal({
             {/* 11. Keyboard shortcuts tab */}
             {activeTab === "shortcuts" && (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Keyboard size={15} className="text-blue-500" />
-                  <span className="font-semibold text-sm text-slate-900 dark:text-zinc-100">Command Bindings Matrix</span>
-                </div>
                 
                 <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden">
                   <table className="w-full text-left">
