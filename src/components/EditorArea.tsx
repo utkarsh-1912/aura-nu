@@ -139,6 +139,8 @@ export default function EditorArea({
   const [mobileSubTab, setMobileSubTab] = useState<"edit" | "preview">("edit");
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const tagContainerRef = useRef<HTMLDivElement>(null);
+  const [isTagsExpanded, setIsTagsExpanded] = useState(false);
   const [showFindBar, setShowFindBar] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [editingBlockIndex, setEditingBlockIndex] = useState<number | null>(null);
@@ -162,6 +164,7 @@ export default function EditorArea({
   useEffect(() => {
     setUndoStack([]);
     setRedoStack([]);
+    setIsTagsExpanded(false);
     lastHistoryPushTime.current = 0;
     if (note) {
       setLocalContent(note.content || "");
@@ -1557,8 +1560,8 @@ export default function EditorArea({
           theme === "dark" ? "border-zinc-800/80 bg-zinc-950/20" : "border-slate-200/60 bg-slate-50/50"
         }`}>
           {/* Row 1: Title, Status, Auto-save state AND Right Action buttons */}
-          <div className="flex items-center justify-between w-full flex-wrap gap-3">
-            <div className="flex items-center gap-2.5 min-w-0 flex-grow">
+          <div className="flex items-center justify-between w-full flex-nowrap gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-grow">
               <input
                 id="active-note-title-input"
                 type="text"
@@ -1569,7 +1572,7 @@ export default function EditorArea({
                     onUpdateNote({ ...note, title: "Untitled Note", updatedAt: new Date().toISOString() });
                   }
                 }}
-                className="font-display font-semibold text-base border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100 placeholder-slate-400 max-w-[200px] sm:max-w-md truncate"
+                className="font-display font-semibold text-base border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100 placeholder-slate-400 w-0 flex-grow min-w-[85px] sm:max-w-md truncate"
                 placeholder="Untitled Note"
                 readOnly={note.isLocked}
               />
@@ -1754,7 +1757,7 @@ export default function EditorArea({
                 {showMoreMenu && (
                   <div
                     id="more-actions-dropdown"
-                    className={`absolute right-0 mt-2 w-56 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
+                    className={`absolute right-0 mt-2 w-56 rounded-xl shadow-xl border p-1 z-50 flex flex-col max-h-[75vh] overflow-y-auto scrollbar-none ${
                       theme === "dark"
                         ? "bg-zinc-950 border-zinc-800 text-zinc-300"
                         : "bg-white border-slate-200 text-slate-700"
@@ -2168,36 +2171,57 @@ export default function EditorArea({
           </div>
         </div>
 
-          {/* Row 2: Tags list (Clean wrapping below the title & status) */}
-          <div className="flex items-center gap-1.5 flex-wrap w-full mt-1 border-t border-slate-100 dark:border-zinc-800/80 pt-2 bg-transparent select-text">
-            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1 mr-1">
+          {/* Row 2: Tags list (Clean single-row display below the title & status) */}
+          <div ref={tagContainerRef} className="flex items-center gap-1.5 flex-nowrap overflow-x-auto scrollbar-none w-full mt-1 border-t border-slate-100 dark:border-zinc-800/80 pt-2 bg-transparent select-text">
+            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1 mr-1 shrink-0">
               <Tag size={10} />
               Tags:
             </span>
             
             {note.tags.length === 0 ? (
-              <span className="text-[10px] text-slate-400 dark:text-zinc-500 italic mr-1">No tags yet</span>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-500 italic mr-1 shrink-0">No tags yet</span>
             ) : (
-              note.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="group flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300 select-none font-mono"
-                >
-                  {tag}
-                  {!note.isLocked && (
-                    <button
-                      onClick={() => {
-                        const updatedTags = note.tags.filter((t) => t !== tag);
-                        onUpdateNote({ ...note, tags: updatedTags, updatedAt: new Date().toISOString() });
-                      }}
-                      className="opacity-60 hover:opacity-100 text-[11px] leading-none pl-0.5 cursor-pointer text-slate-400 dark:text-zinc-500"
-                      title="Remove tag"
-                    >
-                      ×
-                    </button>
-                  )}
-                </span>
-              ))
+              <>
+                {((isMobile && !isTagsExpanded) ? note.tags.slice(0, 2) : note.tags).map((tag) => (
+                  <span
+                    key={tag}
+                    className="group flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300 select-none font-mono shrink-0"
+                  >
+                    {tag}
+                    {!note.isLocked && (
+                      <button
+                        onClick={() => {
+                          const updatedTags = note.tags.filter((t) => t !== tag);
+                          onUpdateNote({ ...note, tags: updatedTags, updatedAt: new Date().toISOString() });
+                        }}
+                        className="opacity-60 hover:opacity-100 text-[11px] leading-none pl-0.5 cursor-pointer text-slate-400 dark:text-zinc-500"
+                        title="Remove tag"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))}
+                {isMobile && !isTagsExpanded && note.tags.length > 2 && (
+                  <button
+                    onClick={() => {
+                      setIsTagsExpanded(true);
+                      setTimeout(() => {
+                        if (tagContainerRef.current) {
+                          tagContainerRef.current.scrollTo({
+                            left: tagContainerRef.current.scrollWidth,
+                            behavior: "smooth"
+                          });
+                        }
+                      }, 50);
+                    }}
+                    title={note.tags.slice(2).join(", ")}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500 border border-blue-500/15 font-mono font-semibold select-none shrink-0 cursor-pointer hover:bg-blue-500/25 active:scale-[0.98] transition-all"
+                  >
+                    +{note.tags.length - 2}
+                  </button>
+                )}
+              </>
             )}
 
             {!note.isLocked && (
@@ -2221,8 +2245,8 @@ export default function EditorArea({
                 <input
                   type="text"
                   name="newTag"
-                  placeholder="+ Tag"
-                  className="text-[10px] px-2 py-0.5 rounded border border-dashed border-slate-300 dark:border-zinc-800 bg-transparent outline-none text-slate-500 dark:text-zinc-400 focus:border-solid focus:border-blue-400 max-w-[70px] font-mono transition-colors"
+                  placeholder="+"
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-dashed border-slate-300 dark:border-zinc-800 bg-transparent outline-none text-slate-500 dark:text-zinc-400 focus:border-solid focus:border-blue-400 max-w-[32px] text-center font-mono transition-colors"
                 />
               </form>
             )}
