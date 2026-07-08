@@ -210,7 +210,7 @@ export default function AuthFlow({
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-tr from-purple-500/10 via-blue-500/5 to-transparent blur-[100px] rounded-full pointer-events-none"></div>
 
         <div className="flex items-center gap-3 relative z-10">
-          <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain rounded-xl shadow-md" />
+          <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain" />
           <span className="font-tomorrow font-bold text-lg tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">Aura Next</span>
         </div>
 

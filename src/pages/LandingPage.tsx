@@ -168,7 +168,7 @@ export default function LandingPage({
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain rounded-xl shadow-md shadow-blue-500/10" />
+            <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain" />
             <span className="hidden sm:inline font-tomorrow font-bold text-base tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
               Aura Next
             </span>
@@ -563,7 +563,7 @@ export default function LandingPage({
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Aura Logo" className="w-7 h-7 object-contain rounded-lg shadow-sm shadow-blue-500/10" />
+              <img src="/logo.png" alt="Aura Logo" className="w-7 h-7 object-contain" />
               <span className="font-tomorrow font-bold text-sm tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
                 Aura Next
               </span>
