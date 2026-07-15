@@ -8,6 +8,7 @@ import {
   Settings,
   Trash2,
   Bookmark,
+  Activity,
   Share2,
   Pin,
   Home,
