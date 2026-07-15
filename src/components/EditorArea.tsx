@@ -324,6 +324,12 @@ export default function EditorArea({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
 
+  const folderName = React.useMemo(() => {
+    if (!note?.folder) return "None";
+    const found = folders.find(f => f.id === note.folder);
+    return found ? found.name : note.folder;
+  }, [note?.folder, folders]);
+
   // Helper to sync updated code block language back into the actual Markdown text
   const handleUpdateCodeBlockLanguage = (blockId: string, lang: string, rawCode: string) => {
     if (!note) return;
@@ -1593,11 +1599,7 @@ export default function EditorArea({
   const lineWrappingClass = 
     settings?.lineWrapping === false ? "whitespace-pre overflow-x-auto" : "whitespace-pre-wrap break-words";
 
-  const folderName = React.useMemo(() => {
-    if (!note?.folder) return "None";
-    const found = folders.find(f => f.id === note.folder);
-    return found ? found.name : note.folder;
-  }, [note?.folder, folders]);
+
 
   const lines = localContent.split("\n");
 
