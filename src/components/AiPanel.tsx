@@ -500,6 +500,53 @@ export default function AiPanel({
     },
   ];
 
+  if (!note) {
+    return (
+      <div
+        id="ai-panel"
+        className="w-full md:w-[360px] h-full border-l border-border-primary flex flex-col flex-shrink-0 transition-all z-10 bg-bg-secondary text-text-primary"
+      >
+        <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-white">
+              <Sparkles size={13} className="animate-pulse" />
+            </div>
+            <span className="font-display font-semibold text-sm tracking-tight text-slate-900 dark:text-zinc-100">
+              Aura AI Assistant
+            </span>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+            >
+              <ChevronRight size={16} />
+            </button>
+          )}
+        </div>
+        <div className="flex-grow flex flex-col items-center justify-center p-6 text-center gap-4">
+          <div className="w-16 h-16 rounded-3xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+            <Sparkles size={28} className="animate-pulse" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-100">No Active Note Selected</h3>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-[240px] leading-relaxed">
+              Aura AI Co-Pilot analyzes notes in real-time. Please select or open a note from your list first.
+            </p>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-[0.98] cursor-pointer"
+            >
+              Open a Note First
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       id="ai-panel"

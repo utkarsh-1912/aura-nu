@@ -249,11 +249,11 @@ export default function SettingsModal({
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none cursor-pointer"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none cursor-pointer animate-modal-backdrop"
     >
       <div
         id="settings-modal"
-        className={`w-full max-w-3xl h-[540px] rounded-3xl shadow-2xl flex flex-col md:flex-row border overflow-hidden transition-all cursor-default ${
+        className={`w-full max-w-3xl h-[540px] rounded-3xl shadow-2xl flex flex-col md:flex-row border overflow-hidden transition-all cursor-default animate-modal-content ${
           activeTheme === "dark"
             ? "bg-[#141416] border-zinc-800 text-zinc-100 shadow-black/80"
             : "bg-white border-slate-200 text-slate-800"

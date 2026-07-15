@@ -304,6 +304,28 @@ app.post("/api/folders", async (req, res) => {
   res.json({ success: true, count: folders.length });
 });
 
+app.get("/api/health", (req, res) => {
+  let dbSize = 0;
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      dbSize = fs.statSync(DB_FILE).size;
+    }
+  } catch (err) {}
+
+  res.json({
+    status: "online",
+    database: isMongoActive ? "mongodb" : "json_file",
+    mongoState: mongoose.connection.readyState,
+    dbFileSize: dbSize,
+    geminiStatus: !!process.env.GEMINI_API_KEY,
+    nodeEnv: process.env.NODE_ENV || "development",
+    uptime: process.uptime(),
+    memoryUsage: process.memoryUsage(),
+    timestamp: Date.now()
+  });
+});
+
+
 const OFFLINE_SPANISH_DICT: Record<string, string> = {
   "Aura Enterprise Launch Plan": "Plan de Lanzamiento de Aura Enterprise",
   "This note outlines the critical tasks and timeline for launching the premium enterprise productivity package.": "Esta nota describe las tareas críticas y el cronograma para lanzar el paquete de productividad empresarial premium.",

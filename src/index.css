@@ -347,4 +347,40 @@
   outline: none;
 }
 
+/* Premium Animations & Transitions */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+  to { opacity: 1; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+}
+@keyframes modal-content-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-modal-content {
+  animation: modal-content-in 250ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.panel-transition {
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), 
+              opacity 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.note-card-hover {
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 150ms ease;
+}
+.note-card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+}
+.dark .note-card-hover:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+
 

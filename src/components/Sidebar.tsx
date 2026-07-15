@@ -35,6 +35,7 @@ import {
   Database,
   LogOut
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Note, Folder, Workspace, WorkspaceType } from "../types";
 
 interface SidebarProps {
@@ -73,6 +74,7 @@ interface SidebarProps {
   onDeleteNote: (noteId: string) => void;
   onSignOut?: () => void;
   onMobileClose?: () => void;
+  isOnline?: boolean;
 }
 
 const AVAILABLE_COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#64748b"];
@@ -113,6 +115,7 @@ export default function Sidebar({
   onToggleArchiveNote,
   onDeleteNote,
   onSignOut,
+  isOnline,
 }: SidebarProps) {
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [showUserProfileMenu, setShowUserProfileMenu] = useState(false);
@@ -1116,6 +1119,19 @@ export default function Sidebar({
                 <span>Account Settings</span>
               </button>
 
+              <Link
+                to="/network-status"
+                onClick={() => setShowUserProfileMenu(false)}
+                className={`flex items-center gap-2.5 w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                  theme === "dark"
+                    ? "hover:bg-zinc-900 text-zinc-350 hover:text-white"
+                    : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Activity size={13} className="opacity-70 text-blue-500" />
+                <span>System Diagnostics</span>
+              </Link>
+
               {onSignOut && (
                 <button
                   onClick={() => {
@@ -1177,7 +1193,7 @@ export default function Sidebar({
                 {currentUserEmail ? currentUserEmail[0].toUpperCase() : "U"}
               </div>
             </div>
-            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-[#FAFAFC] dark:border-[#09090B] rounded-full"></div>
+            <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#FAFAFC] dark:border-[#09090B] rounded-full ${isOnline !== false ? "bg-emerald-500" : "bg-rose-500"}`}></div>
           </div>
 
           {!isSidebarCollapsed && (
@@ -1186,8 +1202,9 @@ export default function Sidebar({
                 <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 truncate">
                   {currentUserEmail ? currentUserEmail.split("@")[0] : "Enterprise Guest"}
                 </span>
-                <span className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">
-                  {currentUserEmail || "sandbox@aura.io"}
+                <span className="text-[9px] text-slate-400 dark:text-zinc-500 truncate flex items-center gap-1 mt-0.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline !== false ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                  {isOnline !== false ? "Connected" : "Offline"}
                 </span>
               </div>
               <ChevronDown size={12} className={`text-slate-400 transition-transform ${showUserProfileMenu ? "rotate-180" : ""}`} />

@@ -236,6 +236,7 @@ export default function WorkspacePage({
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // Responsive breakpoints detection
   const [isMobile, setIsMobile] = useState(false);
@@ -558,6 +559,51 @@ export default function WorkspacePage({
 
     fetchNotesFromServer();
   }, [userEmail]);
+
+  // Online / Offline synchronization mechanism
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      addToast("Network connection restored. Auto-synchronizing changes to cloud database...", "success");
+      fetchNotesFromServer();
+      fetchFoldersFromServer();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      addToast("Network connection lost. Switched to offline cache mode.", "error");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [userEmail]);
+
+  // Periodic network checker and health ping
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (navigator.onLine) {
+        try {
+          const res = await fetch("/api/health");
+          if (res.ok) {
+            if (!isOnline) {
+              setIsOnline(true);
+              fetchNotesFromServer();
+              fetchFoldersFromServer();
+            }
+          } else {
+            if (isOnline) setIsOnline(false);
+          }
+        } catch {
+          if (isOnline) setIsOnline(false);
+        }
+      } else {
+        if (isOnline) setIsOnline(false);
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isOnline, userEmail]);
 
   // Welcome Note Auto-Select Effect
   useEffect(() => {
@@ -1676,6 +1722,7 @@ export default function WorkspacePage({
                       onToggleArchiveNote={handleToggleArchiveNote}
                       onDeleteNote={handleDeleteNote}
                       onSignOut={onSignOut}
+                      isOnline={isOnline}
                     />
                   </div>
                 </div>
@@ -1931,6 +1978,7 @@ export default function WorkspacePage({
               onToggleArchiveNote={handleToggleArchiveNote}
               onDeleteNote={handleDeleteNote}
               onSignOut={onSignOut}
+              isOnline={isOnline}
             />
           )}
 
@@ -2106,9 +2154,9 @@ export default function WorkspacePage({
               setShowVoiceRecorder(false);
             }
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer animate-modal-backdrop"
         >
-          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl cursor-default gap-3">
+          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl cursor-default gap-3 animate-modal-content">
             <div className="relative flex items-center justify-center">
               <div className="absolute inset-0 w-16 h-16 rounded-full border border-red-500/30 animate-ping"></div>
               <div className="w-14 h-14 rounded-full flex items-center justify-center bg-red-500/10 text-red-500 animate-pulse relative">
@@ -2155,9 +2203,9 @@ export default function WorkspacePage({
               setShowDrawingPad(false);
             }
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer animate-modal-backdrop"
         >
-          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-4 shadow-2xl cursor-default">
+          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-4 shadow-2xl cursor-default animate-modal-content">
             <div className="flex justify-between items-center">
               <h4 className="font-semibold text-sm">Quick Drawing Scratchpad</h4>
               <button

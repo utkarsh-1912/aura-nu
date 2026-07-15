@@ -8,6 +8,7 @@ import OnboardingPage from "./pages/OnboardingPage";
 import WorkspacePage from "./pages/WorkspacePage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
+import NetworkStatusPage from "./pages/NetworkStatusPage";
 import { Note } from "./types";
 
 function AppContent() {
@@ -217,6 +218,10 @@ function AppContent() {
       <Route
         path="/terms"
         element={<TermsPage theme={activeTheme} />}
+      />
+      <Route
+        path="/network-status"
+        element={<NetworkStatusPage theme={theme} />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -278,6 +278,49 @@ export default function EditorArea({
     };
   }, []);
 
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+
+  const handleEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (viewMode !== "split") return;
+    if (isSyncingScroll.current) {
+      isSyncingScroll.current = false;
+      return;
+    }
+    const editor = e.currentTarget;
+    const preview = previewContainerRef.current;
+    if (editor && preview) {
+      isSyncingScroll.current = true;
+      const editorScrollable = editor.scrollHeight - editor.clientHeight;
+      if (editorScrollable <= 0) {
+        isSyncingScroll.current = false;
+        return;
+      }
+      const scrollPercentage = editor.scrollTop / editorScrollable;
+      preview.scrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight);
+    }
+  };
+
+  const handlePreviewScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (viewMode !== "split") return;
+    if (isSyncingScroll.current) {
+      isSyncingScroll.current = false;
+      return;
+    }
+    const preview = e.currentTarget;
+    const editor = textareaRef.current;
+    if (preview && editor) {
+      isSyncingScroll.current = true;
+      const previewScrollable = preview.scrollHeight - preview.clientHeight;
+      if (previewScrollable <= 0) {
+        isSyncingScroll.current = false;
+        return;
+      }
+      const scrollPercentage = preview.scrollTop / previewScrollable;
+      editor.scrollTop = scrollPercentage * (editor.scrollHeight - editor.clientHeight);
+    }
+  };
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
 
@@ -2507,6 +2550,7 @@ export default function EditorArea({
               onSelect={checkSelectionStyles}
               onKeyUp={checkSelectionStyles}
               onMouseUp={checkSelectionStyles}
+              onScroll={handleEditorScroll}
               readOnly={note.isLocked}
               className={`w-full flex-grow resize-none border-none outline-none focus:ring-0 font-mono placeholder:italic ${
                 note.isLocked ? "opacity-65 cursor-not-allowed" : ""
@@ -2569,6 +2613,8 @@ export default function EditorArea({
         {/* PREVIEW PANE */}
         {(viewMode === "preview" || (viewMode === "split" && (!isMobile || mobileSubTab === "preview"))) && (
           <div
+            ref={previewContainerRef}
+            onScroll={handlePreviewScroll}
             style={{ width: (viewMode === "split" && !isMobile) ? `${100 - splitPercentage}%` : "100%", flexGrow: (viewMode === "split" && !isMobile) ? 0 : 1, flexShrink: 0 }}
             className="h-full overflow-y-auto bg-slate-50/20 dark:bg-zinc-950/10"
           >

@@ -615,6 +615,7 @@ export default function LandingPage({
         <div className="max-w-7xl mx-auto pt-8 border-t border-slate-200/50 dark:border-zinc-800/60 flex flex-col sm:flex-row justify-between items-center text-center sm:text-left text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
           <span>&copy; {new Date().getFullYear()} Aura Inc. All standard developer rights reserved.</span>
           <div className="flex gap-4 mt-4 sm:mt-0">
+            <Link to="/network-status" className="hover:text-blue-500 transition-colors cursor-pointer text-blue-500 dark:text-blue-400 font-semibold">System Diagnostics</Link>
             <Link to="/terms" className="hover:text-blue-500 transition-colors cursor-pointer">Terms of Service</Link>
             <Link to="/privacy" className="hover:text-blue-500 transition-colors cursor-pointer">Privacy Policy</Link>
           </div>

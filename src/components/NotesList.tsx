@@ -338,9 +338,9 @@ export default function NotesList({
         onClick={(e) => handleNoteClick(e, note)}
         draggable
         onDragStart={(e) => handleDragStart(e, note)}
-        className={`py-2.5 px-3 rounded-xl mx-1.5 mb-1.5 cursor-pointer transition-all duration-150 select-none group relative border ${
+        className={`py-2.5 px-3 rounded-xl mx-1.5 mb-1.5 cursor-pointer select-none group relative border note-card-hover ${
           isActive
-            ? "bg-bg-secondary border-border-primary shadow-xs text-text-primary font-semibold"
+            ? "bg-bg-secondary border-border-primary shadow-sm text-text-primary font-semibold"
             : isSelected
             ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-semibold"
             : "bg-transparent border-transparent hover:bg-bg-secondary/80 hover:border-border-primary text-text-secondary hover:text-text-primary"
