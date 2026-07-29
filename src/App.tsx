@@ -2,10 +2,13 @@ import React, { useState, useEffect, useMemo } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, isFirebaseConfigured } from "./firebase";
+import { setSentryUser, clearSentryUser } from "./sentry";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import WorkspacePage from "./pages/WorkspacePage";
+import OrgHubPage from "./pages/OrgHubPage";
+import AdminConsolePage from "./pages/AdminConsolePage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import NetworkStatusPage from "./pages/NetworkStatusPage";
@@ -68,10 +71,12 @@ function AppContent() {
     if (isFirebaseConfigured && auth) {
       const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
         if (firebaseUser && firebaseUser.email) {
-          setUser({
+          const u = {
             email: firebaseUser.email,
             displayName: firebaseUser.displayName || undefined,
-          });
+          };
+          setUser(u);
+          setSentryUser(firebaseUser.email);
           const path = window.location.pathname;
           if (path === "/" || path === "/login" || path === "/register") {
             navigate("/w/ws-aura-core/dashboard");
@@ -122,6 +127,7 @@ function AppContent() {
       }
     }
     setUser(null);
+    clearSentryUser();
     localStorage.removeItem("aura-user");
     navigate("/");
   };
@@ -208,6 +214,30 @@ function AppContent() {
             setTheme={handleSetTheme}
             activeTheme={activeTheme}
             onSignOut={handleSignOut}
+          />
+        }
+      />
+      {/* Org Hub & Admin Console routes */}
+      <Route
+        path="/org/:orgId"
+        element={
+          <OrgHubPage
+            theme={activeTheme}
+            orgId="org-aura-main"
+            userEmail={user?.email || "sandbox@aura.io"}
+            onNavigateToAdmin={() => navigate("/org/org-aura-main/admin")}
+            onNavigateToWorkspace={(wsId) => navigate(`/w/${wsId}/dashboard`)}
+          />
+        }
+      />
+      <Route
+        path="/org/:orgId/admin"
+        element={
+          <AdminConsolePage
+            theme={activeTheme}
+            orgId="org-aura-main"
+            userEmail={user?.email || "sandbox@aura.io"}
+            onNavigateBack={() => navigate("/org/org-aura-main")}
           />
         }
       />

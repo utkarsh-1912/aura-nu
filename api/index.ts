@@ -4,8 +4,18 @@ import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import * as Sentry from "@sentry/node";
 
 dotenv.config();
+
+// Initialize Sentry on server side
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
+  });
+}
 
 const app = express();
 const PORT = 3000;
@@ -212,6 +222,259 @@ const FolderSchema = new mongoose.Schema({
 FolderSchema.index({ userEmail: 1, id: 1 }, { unique: true });
 const MongoFolder = mongoose.model("Folder", FolderSchema);
 
+// ── Enterprise Schemas ──────────────────────────────────────────────────────
+const OrgSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  domain: String,
+  logoUrl: String,
+  tier: { type: String, enum: ["personal", "team", "enterprise"], default: "personal" },
+  ownerId: { type: String, required: true },
+  ownerEmail: { type: String, required: true },
+  seats: { type: Number, default: 1 },
+  usedSeats: { type: Number, default: 1 },
+  storageUsedGB: { type: Number, default: 0 },
+  storageLimitGB: { type: Number, default: 1 },
+  ssoProvider: { type: String, default: null },
+  ssoClientId: String,
+  createdAt: { type: String, default: () => new Date().toISOString() },
+  updatedAt: { type: String, default: () => new Date().toISOString() },
+});
+const MongoOrg = mongoose.models.Org || mongoose.model("Org", OrgSchema);
+
+const DepartmentSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  orgId: { type: String, required: true },
+  name: { type: String, required: true },
+  icon: { type: String, default: "🏢" },
+  color: { type: String, default: "#6366f1" },
+  leadEmail: String,
+  memberCount: { type: Number, default: 0 },
+  workspaceCount: { type: Number, default: 0 },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+});
+DepartmentSchema.index({ orgId: 1, id: 1 }, { unique: true });
+const MongoDept = mongoose.models.Department || mongoose.model("Department", DepartmentSchema);
+
+const OrgMemberSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  orgId: { type: String, required: true },
+  email: { type: String, required: true },
+  displayName: String,
+  orgRole: { type: String, enum: ["OrgOwner", "OrgAdmin", "BillingAdmin", "DeptLead", "Member"], default: "Member" },
+  joinedAt: { type: String, default: () => new Date().toISOString() },
+  lastActiveAt: String,
+  departmentIds: [String],
+  isOwner: { type: Boolean, default: false },
+});
+OrgMemberSchema.index({ orgId: 1, email: 1 }, { unique: true });
+const MongoOrgMember = mongoose.models.OrgMember || mongoose.model("OrgMember", OrgMemberSchema);
+
+const AuditLogSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  orgId: { type: String, required: true },
+  userEmail: { type: String, required: true },
+  action: { type: String, required: true },
+  resource: { type: String, required: true },
+  resourceId: String,
+  ipAddress: { type: String, default: "0.0.0.0" },
+  userAgent: String,
+  timestamp: { type: String, default: () => new Date().toISOString() },
+  severity: { type: String, enum: ["info", "warning", "critical"], default: "info" },
+  metadata: mongoose.Schema.Types.Mixed,
+});
+AuditLogSchema.index({ orgId: 1, timestamp: -1 });
+const MongoAuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditLogSchema);
+
+// ── Enterprise API Routes ───────────────────────────────────────────────────
+
+// GET /api/org/:orgId — fetch org info
+app.get("/api/org/:orgId", async (req, res) => {
+  const { orgId } = req.params;
+  try {
+    if (isMongoActive) {
+      const org = await MongoOrg.findOne({ id: orgId }).lean();
+      if (!org) return res.status(404).json({ error: "Org not found" });
+      return res.json({ org });
+    }
+    return res.json({ org: { id: orgId, name: "Aura Corp", tier: "enterprise", seats: 100, usedSeats: 42 } });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to fetch org" });
+  }
+});
+
+// POST /api/org — create org
+app.post("/api/org", async (req, res) => {
+  const { name, domain, tier, ownerEmail } = req.body;
+  const id = `org-${Date.now()}`;
+  try {
+    if (isMongoActive) {
+      const org = new MongoOrg({ id, name, domain, tier: tier || "team", ownerId: ownerEmail, ownerEmail });
+      await org.save();
+      return res.status(201).json({ org: org.toObject() });
+    }
+    return res.status(201).json({ org: { id, name, domain, tier, ownerEmail } });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to create org" });
+  }
+});
+
+// GET /api/org/:orgId/members
+app.get("/api/org/:orgId/members", async (req, res) => {
+  const { orgId } = req.params;
+  try {
+    if (isMongoActive) {
+      const members = await MongoOrgMember.find({ orgId }).lean();
+      return res.json({ members });
+    }
+    return res.json({ members: [] });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to fetch members" });
+  }
+});
+
+// POST /api/org/:orgId/invite
+app.post("/api/org/:orgId/invite", async (req, res) => {
+  const { orgId } = req.params;
+  const { emails, role } = req.body;
+  try {
+    if (isMongoActive) {
+      const created = await Promise.all(
+        (emails as string[]).map(async (email) => {
+          const id = `member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          const m = new MongoOrgMember({ id, orgId, email, orgRole: role || "Member" });
+          await m.save();
+          return m.toObject();
+        })
+      );
+      return res.status(201).json({ invited: created });
+    }
+    return res.status(201).json({ invited: emails });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to invite members" });
+  }
+});
+
+// PATCH /api/org/:orgId/member/:memberId/role
+app.patch("/api/org/:orgId/member/:memberId/role", async (req, res) => {
+  const { orgId, memberId } = req.params;
+  const { role } = req.body;
+  try {
+    if (isMongoActive) {
+      await MongoOrgMember.updateOne({ orgId, id: memberId }, { $set: { orgRole: role } });
+    }
+    return res.json({ success: true, memberId, role });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to update member role" });
+  }
+});
+
+// DELETE /api/org/:orgId/member/:memberId
+app.delete("/api/org/:orgId/member/:memberId", async (req, res) => {
+  const { orgId, memberId } = req.params;
+  try {
+    if (isMongoActive) {
+      await MongoOrgMember.deleteOne({ orgId, id: memberId });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to remove member" });
+  }
+});
+
+// GET /api/org/:orgId/departments
+app.get("/api/org/:orgId/departments", async (req, res) => {
+  const { orgId } = req.params;
+  try {
+    if (isMongoActive) {
+      const depts = await MongoDept.find({ orgId }).lean();
+      return res.json({ departments: depts });
+    }
+    return res.json({ departments: [] });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to fetch departments" });
+  }
+});
+
+// POST /api/org/:orgId/departments
+app.post("/api/org/:orgId/departments", async (req, res) => {
+  const { orgId } = req.params;
+  const { name, icon, color, leadEmail } = req.body;
+  const id = `dept-${Date.now()}`;
+  try {
+    if (isMongoActive) {
+      const dept = new MongoDept({ id, orgId, name, icon: icon || "🏢", color: color || "#6366f1", leadEmail });
+      await dept.save();
+      return res.status(201).json({ department: dept.toObject() });
+    }
+    return res.status(201).json({ department: { id, orgId, name, icon, color, leadEmail } });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to create department" });
+  }
+});
+
+// GET /api/org/:orgId/audit-logs
+app.get("/api/org/:orgId/audit-logs", async (req, res) => {
+  const { orgId } = req.params;
+  const page = parseInt((req.query.page as string) || "1");
+  const limit = parseInt((req.query.limit as string) || "50");
+  const severity = req.query.severity as string | undefined;
+  try {
+    if (isMongoActive) {
+      const filter: any = { orgId };
+      if (severity) filter.severity = severity;
+      const logs = await MongoAuditLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+      const total = await MongoAuditLog.countDocuments(filter);
+      return res.json({ logs, total, page, limit });
+    }
+    return res.json({ logs: [], total: 0, page, limit });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to fetch audit logs" });
+  }
+});
+
+// GET /api/org/:orgId/billing
+app.get("/api/org/:orgId/billing", async (req, res) => {
+  const { orgId } = req.params;
+  try {
+    if (isMongoActive) {
+      const org = await MongoOrg.findOne({ id: orgId }).lean();
+      if (!org) return res.status(404).json({ error: "Org not found" });
+    }
+    // Return mock billing data (replace with Stripe integration)
+    return res.json({
+      billing: {
+        planId: "enterprise",
+        planName: "Aura Enterprise",
+        amount: 4900,
+        currency: "usd",
+        billedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        nextRenewalAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        status: "active",
+        seats: 100,
+        seatPrice: 49,
+      },
+    });
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.status(500).json({ error: "Failed to fetch billing" });
+  }
+});
+
+// ── Core REST APIs ──────────────────────────────────────────────────────────
 // REST APIs
 app.get("/api/notes", async (req, res) => {
   const email = (req.headers["x-user-email"] as string) || "sandbox@aura.io";

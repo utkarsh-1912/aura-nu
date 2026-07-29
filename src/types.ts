@@ -167,3 +167,106 @@ export interface Folder {
   isExpanded?: boolean; // Remember expanded/collapsed state
 }
 
+export type UserTier = "personal" | "team" | "enterprise";
+
+export type OrgRole = "OrgOwner" | "OrgAdmin" | "BillingAdmin" | "DeptLead" | "Member";
+
+export interface TierPermissions {
+  maxWorkspaces: number;
+  maxMembersPerWorkspace: number;
+  maxDepartments: number;
+  canCreateDepts: boolean;
+  canInviteMembers: boolean;
+  canConfigureSSO: boolean;
+  canExportAuditLogs: boolean;
+  canAccessAdminConsole: boolean;
+  canUseAdvancedAI: boolean;
+  aiActionsPerMonth: number;
+  storageLimitGB: number;
+  canSetCustomDomain: boolean;
+  prioritySupport: boolean;
+}
+
+export interface BillingRecord {
+  planId: "free" | "team" | "enterprise";
+  planName: string;
+  amount: number;
+  currency: string;
+  billedAt: string;
+  nextRenewalAt: string;
+  status: "active" | "past_due" | "canceled" | "trialing";
+  seats: number;
+  seatPrice: number;
+}
+
+export interface OrgDepartment {
+  id: string;
+  orgId: string;
+  name: string;
+  icon: string;
+  color: string;
+  leadEmail?: string;
+  memberCount: number;
+  workspaceCount: number;
+  createdAt: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  domain?: string;
+  logoUrl?: string;
+  tier: UserTier;
+  ownerId: string;
+  ownerEmail: string;
+  seats: number;
+  usedSeats: number;
+  storageUsedGB: number;
+  storageLimitGB: number;
+  ssoProvider?: "google" | "okta" | "azure" | "saml" | null;
+  ssoClientId?: string;
+  departments: OrgDepartment[];
+  billing: BillingRecord;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrgMember {
+  id: string;
+  orgId: string;
+  email: string;
+  displayName?: string;
+  avatarUrl?: string;
+  orgRole: OrgRole;
+  tier: UserTier;
+  joinedAt: string;
+  lastActiveAt?: string;
+  departmentIds: string[];
+  isOwner: boolean;
+}
+
+export interface OrgAuditLog {
+  id: string;
+  orgId: string;
+  userId: string;
+  userEmail: string;
+  action: string;
+  resource: string;
+  resourceId?: string;
+  ipAddress: string;
+  userAgent?: string;
+  timestamp: string;
+  severity: "info" | "warning" | "critical";
+  metadata?: Record<string, unknown>;
+}
+
+export interface OrgInvitation {
+  id: string;
+  orgId: string;
+  email: string;
+  orgRole: OrgRole;
+  invitedBy: string;
+  status: "pending" | "accepted" | "expired" | "revoked";
+  sentAt: string;
+  expiresAt: string;
+}
