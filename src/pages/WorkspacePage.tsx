@@ -54,6 +54,10 @@ export default function WorkspacePage({
 
   const activeWorkspaceId = wsId || "ws-aura-core";
 
+  // Responsive breakpoints detection
+  const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+
   // Multi-Workspace State Engine
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [lastOpenedNotes, setLastOpenedNotes] = useState<Record<string, string | null>>({});
@@ -238,10 +242,6 @@ export default function WorkspacePage({
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Responsive breakpoints detection
-  const [isMobile, setIsMobile] = useState(false);
-  const [isTablet, setIsTablet] = useState(false);
-
   // Mobile Bottom Navigation tab selector: "home" | "notes" | "ai" | "settings"
   const [mobileTab, setMobileTab] = useState<"home" | "notes" | "ai" | "settings">("home");
 
@@ -263,19 +263,29 @@ export default function WorkspacePage({
 
   // Toast System
   const [toasts, setToasts] = useState<{ id: string; text: string; type: "success" | "info" | "error" }[]>([]);
+  const toastTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      toastTimersRef.current.forEach((timer) => clearTimeout(timer));
+      toastTimersRef.current.clear();
+    };
+  }, []);
 
   const addToast = (text: string, type: "success" | "info" | "error" = "info") => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
+    const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, text, type }]);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(timer);
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
+    toastTimersRef.current.add(timer);
   };
 
   // Helper to log user timeline activity
   const addActivity = (text: string, type: Activity["type"]) => {
     const newAct: Activity = {
-      id: `act-${Date.now()}-${Math.random()}`,
+      id: crypto.randomUUID(),
       workspaceId: activeWorkspaceId,
       text,
       timestamp: new Date().toISOString(),
@@ -283,6 +293,9 @@ export default function WorkspacePage({
     };
     setActivities((prev) => [newAct, ...prev].slice(0, 15));
   };
+
+  const resizeRafId = useRef<number | null>(null);
+  const latestMouseXRef = useRef<number>(0);
 
   const handleNotesListResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -294,13 +307,20 @@ export default function WorkspacePage({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingNotesList.current) return;
-      const sidebarWidth = isSidebarCollapsed ? 64 : 256;
-      let width = e.clientX - sidebarWidth;
-      
-      if (width < 240) width = 240;
-      if (width > 480) width = 480;
-      
-      setNotesListWidth(width);
+      latestMouseXRef.current = e.clientX;
+
+      if (resizeRafId.current === null) {
+        resizeRafId.current = requestAnimationFrame(() => {
+          resizeRafId.current = null;
+          const sidebarWidth = isSidebarCollapsed ? 64 : 256;
+          let width = latestMouseXRef.current - sidebarWidth;
+          
+          if (width < 240) width = 240;
+          if (width > 480) width = 480;
+          
+          setNotesListWidth(width);
+        });
+      }
     };
 
     const handleMouseUp = () => {
@@ -309,6 +329,10 @@ export default function WorkspacePage({
         document.body.style.cursor = "";
         document.body.classList.remove("select-none");
       }
+      if (resizeRafId.current !== null) {
+        cancelAnimationFrame(resizeRafId.current);
+        resizeRafId.current = null;
+      }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -316,19 +340,35 @@ export default function WorkspacePage({
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      if (resizeRafId.current !== null) {
+        cancelAnimationFrame(resizeRafId.current);
+        resizeRafId.current = null;
+      }
     };
   }, [isSidebarCollapsed]);
 
   // Breakpoint tracking
   useEffect(() => {
-    const handleResize = () => {
+    const updateBreakpoints = () => {
       setIsMobile(window.innerWidth < 768);
       setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1024);
     };
 
-    handleResize();
+    updateBreakpoints();
+
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        updateBreakpoints();
+      }, 150);
+    };
+
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   // Keyboard Shortcuts Listener
@@ -426,11 +466,11 @@ export default function WorkspacePage({
 
     // Dynamically replace hardcoded email references with active user email
     const dynamicWorkspaces = localWorkspaces.map(ws => {
-      const sanitizedName = userEmail.split("@")[0];
+      const sanitizedName = (userEmail && typeof userEmail === "string" && userEmail.includes("@")) ? userEmail.split("@")[0] : "user";
       const displayName = sanitizedName.charAt(0).toUpperCase() + sanitizedName.slice(1);
       
       const members = (ws.members || []).map(m => {
-        if (m.email === "gutkarshlb@gmail.com") {
+        if (m.email === "gutkarshlb@gmail.com" || m.email === "utkarsh.gupta@aura.io") {
           return {
             ...m,
             email: userEmail,
@@ -442,7 +482,7 @@ export default function WorkspacePage({
       });
 
       const auditLogs = (ws.auditLogs || []).map(a => {
-        if (a.userEmail === "gutkarshlb@gmail.com") {
+        if (a.userEmail === "gutkarshlb@gmail.com" || a.userEmail === "utkarsh.gupta@aura.io") {
           return {
             ...a,
             userEmail: userEmail
@@ -964,10 +1004,10 @@ export default function WorkspacePage({
       isPinned: false,
       isFavorite: false,
       storageUsage: 0,
-      storageQuota: 5,
+      storageQuota: 5 * 1024 * 1024,
       settings: { ...DEFAULT_SETTINGS, theme: "light" },
       members: [
-        { id: `m-${Date.now()}`, name: userEmail.split("@")[0], email: userEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0], avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}` }
+        { id: `m-${Date.now()}`, name: (userEmail && typeof userEmail === "string" && userEmail.includes("@")) ? userEmail.split("@")[0] : "user", email: userEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0], avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}` }
       ],
       templates: [],
       integrations: [],

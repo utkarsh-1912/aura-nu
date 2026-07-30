@@ -49,7 +49,7 @@ import {
   Volume2,
   VolumeX
 } from "lucide-react";
-import { Note, Workspace, Folder } from "../types";
+import { Note, Workspace, Folder, Settings } from "../types";
 import CodeBlockContainer from "./CodeBlockContainer";
 import TableContainer from "./TableContainer";
 
@@ -101,6 +101,7 @@ export default function EditorArea({
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const handleToggleSpeak = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     if (isSpeaking) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
@@ -120,6 +121,7 @@ export default function EditorArea({
   };
 
   useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
   }, [note?.id]);
@@ -133,13 +135,13 @@ export default function EditorArea({
 
     if (historySearchQuery.trim()) {
       const q = historySearchQuery.toLowerCase();
-      list = list.filter((v) => v.content.toLowerCase().includes(q));
+      list = list.filter((v) => v?.content?.toLowerCase()?.includes(q));
     }
 
     if (historySizeFilter === "large") {
-      list = list.filter((v) => v.content.length > 500);
+      list = list.filter((v) => (v?.content?.length || 0) > 500);
     } else if (historySizeFilter === "small") {
-      list = list.filter((v) => v.content.length <= 500);
+      list = list.filter((v) => (v?.content?.length || 0) <= 500);
     }
 
     return list;
@@ -206,7 +208,7 @@ export default function EditorArea({
         setLocalContent(note.content || "");
       }
     }
-  }, [note?.content, settings?.autoSave]);
+  }, [note?.content, localContent, settings?.autoSave]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -280,6 +282,7 @@ export default function EditorArea({
 
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const isSyncingScroll = useRef(false);
+  const scrollRafId = useRef<number | null>(null);
 
   const handleEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
     if (viewMode !== "split") return;
@@ -289,7 +292,13 @@ export default function EditorArea({
     }
     const editor = e.currentTarget;
     const preview = previewContainerRef.current;
-    if (editor && preview) {
+    if (!editor || !preview) return;
+
+    if (scrollRafId.current !== null) {
+      cancelAnimationFrame(scrollRafId.current);
+    }
+
+    scrollRafId.current = requestAnimationFrame(() => {
       isSyncingScroll.current = true;
       const editorScrollable = editor.scrollHeight - editor.clientHeight;
       if (editorScrollable <= 0) {
@@ -298,7 +307,7 @@ export default function EditorArea({
       }
       const scrollPercentage = editor.scrollTop / editorScrollable;
       preview.scrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight);
-    }
+    });
   };
 
   const handlePreviewScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -309,7 +318,13 @@ export default function EditorArea({
     }
     const preview = e.currentTarget;
     const editor = textareaRef.current;
-    if (preview && editor) {
+    if (!preview || !editor) return;
+
+    if (scrollRafId.current !== null) {
+      cancelAnimationFrame(scrollRafId.current);
+    }
+
+    scrollRafId.current = requestAnimationFrame(() => {
       isSyncingScroll.current = true;
       const previewScrollable = preview.scrollHeight - preview.clientHeight;
       if (previewScrollable <= 0) {
@@ -318,8 +333,16 @@ export default function EditorArea({
       }
       const scrollPercentage = preview.scrollTop / previewScrollable;
       editor.scrollTop = scrollPercentage * (editor.scrollHeight - editor.clientHeight);
-    }
+    });
   };
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafId.current !== null) {
+        cancelAnimationFrame(scrollRafId.current);
+      }
+    };
+  }, []);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);

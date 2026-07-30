@@ -138,8 +138,9 @@ function AppContent() {
     invitedEmails: string[];
     importedNotesCount: number;
   }) => {
-    const userEmail = user?.email || "mockuser@aura.io";
-    localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify([]));
+    if (data.theme) {
+      handleSetTheme(data.theme);
+    }
     navigate("/w/ws-aura-core/dashboard");
   };
 

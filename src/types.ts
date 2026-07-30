@@ -144,8 +144,8 @@ export interface Workspace {
   role: WorkspaceRole;
   isPinned: boolean;
   isFavorite: boolean;
-  storageUsage: number; // in bytes or KB
-  storageQuota: number; // in MB (e.g., 5MB or 100MB)
+  storageUsage: number; // in Bytes
+  storageQuota: number; // in Bytes (e.g., 5 * 1024 * 1024 for 5 MB)
   members: WorkspaceMember[];
   templates: WorkspaceTemplate[];
   settings: Settings;

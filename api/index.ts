@@ -56,6 +56,8 @@ if (geminiApiKey) {
       },
     },
   });
+} else {
+  console.warn("GEMINI_API_KEY is missing in environment parameters. Generative AI functionality will fall back to local mode.");
 }
 
 // Initial default notes to showcase the beauty and capabilities of Aura Next

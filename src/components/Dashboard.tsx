@@ -115,7 +115,7 @@ export default function Dashboard({
 
   // Active Workspace context
   const activeWorkspace = useMemo(() => {
-    return workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+    return workspaces.find((w) => w.id === activeWorkspaceId) || workspaces?.[0] || null;
   }, [workspaces, activeWorkspaceId]);
 
   // Isolate notes & other state items for CURRENT workspace
@@ -136,8 +136,10 @@ export default function Dashboard({
   }, [workspaceNotes]);
 
   const recentNotes = useMemo(() => {
-    return [...workspaceNotes]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return workspaceNotes
+      .map((n) => ({ note: n, time: new Date(n.updatedAt).getTime() }))
+      .sort((a, b) => b.time - a.time)
+      .map((item) => item.note)
       .slice(0, 4);
   }, [workspaceNotes]);
 
@@ -154,21 +156,18 @@ export default function Dashboard({
     : 0;
 
   // Folder distribution
-  const folderCounts = useMemo(() => {
+  const folderStats = useMemo(() => {
     const counts: Record<string, number> = {};
     workspaceNotes.forEach((n) => {
       counts[n.folder] = (counts[n.folder] || 0) + 1;
     });
-    return counts;
-  }, [workspaceNotes]);
 
-  const folderStats = useMemo(() => {
-    return Object.keys(folderCounts).map((folder) => {
-      const count = folderCounts[folder];
+    return Object.keys(counts).map((folder) => {
+      const count = counts[folder];
       const percentage = totalNotesCount > 0 ? Math.round((count / totalNotesCount) * 100) : 0;
       return { name: folder, count, percentage };
     }).sort((a, b) => b.count - a.count);
-  }, [folderCounts, totalNotesCount]);
+  }, [workspaceNotes, totalNotesCount]);
 
   const handleReminderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,7 +179,7 @@ export default function Dashboard({
   // Roles permission check helper
   const hasPermission = (permission: string) => {
     const role = activeWorkspace?.role || "Viewer";
-    const hierarchy: Record<WorkspaceRole, string[]> = {
+    const hierarchy: Record<string, string[]> = {
       Owner: ["create", "read", "edit", "delete", "share", "export", "ai", "billing", "members", "settings"],
       Admin: ["create", "read", "edit", "delete", "share", "export", "ai", "members", "settings"],
       Manager: ["create", "read", "edit", "delete", "share", "export", "ai", "members"],
@@ -474,7 +473,7 @@ export default function Dashboard({
             <div className="flex flex-col">
               <span className="text-[10px] text-slate-400 font-mono">Storage usage</span>
               <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                {actualStorageUsed} KB / {activeWorkspace?.storageQuota || 5} MB
+                {actualStorageUsed} KB / {activeWorkspace?.storageQuota ? (activeWorkspace.storageQuota > 10000 ? Math.round(activeWorkspace.storageQuota / (1024 * 1024)) : activeWorkspace.storageQuota) : 5} MB
               </span>
             </div>
           </div>

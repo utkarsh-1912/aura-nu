@@ -11,9 +11,18 @@ export const DEFAULT_SETTINGS: Settings = {
   lineWrapping: true,
   showLineNumbers: true,
 };
-export const getCleanInitialWorkspaces = (userEmail: string): Workspace[] => {
-  const userName = userEmail.split("@")[0];
+
+export const getCleanInitialWorkspaces = (userEmail?: string): Workspace[] => {
+  let userName = "user";
+  if (userEmail && typeof userEmail === "string" && userEmail.includes("@")) {
+    const extracted = userEmail.split("@")[0].trim();
+    if (extracted) {
+      userName = extracted;
+    }
+  }
   const capitalized = userName.charAt(0).toUpperCase() + userName.slice(1);
+  const safeEmail = (userEmail && typeof userEmail === "string" && userEmail.includes("@")) ? userEmail : "user@aura.io";
+
   return [
     {
       id: "ws-personal",
@@ -24,7 +33,7 @@ export const getCleanInitialWorkspaces = (userEmail: string): Workspace[] => {
       isPinned: true,
       isFavorite: false,
       storageUsage: 0,
-      storageQuota: 10,
+      storageQuota: 10 * 1024 * 1024, // 10 MB in Bytes
       settings: {
         theme: "light",
         fontSize: "base",
@@ -35,7 +44,7 @@ export const getCleanInitialWorkspaces = (userEmail: string): Workspace[] => {
         enableNotifications: true,
       },
       members: [
-        { id: "m-1", name: capitalized, email: userEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0] }
+        { id: "m-1", name: capitalized, email: safeEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0] }
       ],
       templates: [],
       integrations: [],
@@ -47,6 +56,7 @@ export const getCleanInitialWorkspaces = (userEmail: string): Workspace[] => {
     }
   ];
 };
+
 export const INITIAL_WORKSPACES: Workspace[] = [
   {
     id: "ws-aura-core",
@@ -57,10 +67,10 @@ export const INITIAL_WORKSPACES: Workspace[] = [
     isPinned: true,
     isFavorite: true,
     storageUsage: 45056, // 44 KB
-    storageQuota: 5, // 5 MB
+    storageQuota: 5 * 1024 * 1024, // 5 MB in Bytes
     settings: { ...DEFAULT_SETTINGS, theme: "dark" },
     members: [
-      { id: "m-1", name: "Utkarsh Gupta", email: "gutkarshlb@gmail.com", role: "Admin", joinedAt: "2026-01-10", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Utkarsh" },
+      { id: "m-1", name: "Utkarsh Gupta", email: "utkarsh.gupta@aura.io", role: "Admin", joinedAt: "2026-01-10", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Utkarsh" },
       { id: "m-2", name: "Sarah Chen", email: "sarah.chen@aura.io", role: "Owner", joinedAt: "2026-01-02", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" },
       { id: "m-3", name: "Marcus Brody", email: "marcus.brody@aura.io", role: "Manager", joinedAt: "2026-01-15", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Marcus" },
       { id: "m-4", name: "Elena Rostova", email: "elena@aura.io", role: "Editor", joinedAt: "2026-02-01", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Elena" },
@@ -82,8 +92,8 @@ export const INITIAL_WORKSPACES: Workspace[] = [
       { id: "inv-2", email: "leon.kennedy@umbrella.com", role: "Viewer", status: "expired", sentAt: "2026-06-01", expiresAt: "2026-06-08" }
     ],
     auditLogs: [
-      { id: "aud-1", userId: "m-1", userEmail: "gutkarshlb@gmail.com", action: "Updated Settings", timestamp: "2026-07-05T10:30:00Z", ipAddress: "192.168.1.104" },
-      { id: "aud-2", userId: "m-2", userEmail: "sarah.chen@aura.io", action: "Pinned welcome note", timestamp: "2026-07-05T09:15:00Z", ipAddress: "192.168.1.100" }
+      { id: "aud-1", userId: "m-1", userEmail: "utkarsh.gupta@aura.io", action: "Updated Settings", timestamp: "2026-07-05T10:30:00Z", ipAddress: "10.0.0.1" },
+      { id: "aud-2", userId: "m-2", userEmail: "sarah.chen@aura.io", action: "Pinned welcome note", timestamp: "2026-07-05T09:15:00Z", ipAddress: "10.0.0.2" }
     ],
     departments: [
       {
@@ -115,10 +125,10 @@ export const INITIAL_WORKSPACES: Workspace[] = [
     isPinned: true,
     isFavorite: false,
     storageUsage: 8192, // 8 KB
-    storageQuota: 2, // 2 MB
+    storageQuota: 2 * 1024 * 1024, // 2 MB in Bytes
     settings: { ...DEFAULT_SETTINGS, theme: "light" },
     members: [
-      { id: "m-1", name: "Utkarsh Gupta", email: "gutkarshlb@gmail.com", role: "Owner", joinedAt: "2026-01-01", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Utkarsh" }
+      { id: "m-1", name: "Utkarsh Gupta", email: "utkarsh.gupta@aura.io", role: "Owner", joinedAt: "2026-01-01", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Utkarsh" }
     ],
     templates: [
       { id: "t-personal-1", title: "☀️ Morning Journaling", content: "# ☀️ Morning Reflection\n\n- **Mood**: \n- **Intentions for Today**: \n- **Gratitude list**:\n  1.\n  2.\n  3.", tags: ["Journal", "Mental Health"] }
@@ -141,10 +151,10 @@ export const INITIAL_WORKSPACES: Workspace[] = [
     isPinned: false,
     isFavorite: true,
     storageUsage: 24576, // 24 KB
-    storageQuota: 10, // 10 MB
+    storageQuota: 10 * 1024 * 1024, // 10 MB in Bytes
     settings: { ...DEFAULT_SETTINGS, theme: "dark" },
     members: [
-      { id: "m-1", name: "Utkarsh Gupta", email: "gutkarshlb@gmail.com", role: "Manager", joinedAt: "2026-01-05" },
+      { id: "m-1", name: "Utkarsh Gupta", email: "utkarsh.gupta@aura.io", role: "Manager", joinedAt: "2026-01-05" },
       { id: "m-5", name: "David Kim", email: "david.k@aura.io", role: "Admin", joinedAt: "2026-01-10" },
       { id: "m-e1", name: "Linus T.", email: "linus@kernel.org", role: "Editor", joinedAt: "2026-02-15" }
     ],
@@ -177,10 +187,10 @@ export const INITIAL_WORKSPACES: Workspace[] = [
     isPinned: false,
     isFavorite: false,
     storageUsage: 12288, // 12 KB
-    storageQuota: 5, // 5 MB
+    storageQuota: 5 * 1024 * 1024, // 5 MB in Bytes
     settings: DEFAULT_SETTINGS,
     members: [
-      { id: "m-1", name: "Utkarsh Gupta", email: "gutkarshlb@gmail.com", role: "Editor", joinedAt: "2026-02-20" },
+      { id: "m-1", name: "Utkarsh Gupta", email: "utkarsh.gupta@aura.io", role: "Editor", joinedAt: "2026-02-20" },
       { id: "m-ac1", name: "John Acme", email: "john@acme.com", role: "Owner", joinedAt: "2026-02-20" }
     ],
     templates: [],

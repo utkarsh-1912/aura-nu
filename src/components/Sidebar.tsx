@@ -163,27 +163,57 @@ export default function Sidebar({
   const [deleteMode, setDeleteMode] = useState<"uncategorize" | "move" | "trash">("uncategorize");
   const [deleteTargetFolderId, setDeleteTargetFolderId] = useState<string>("");
 
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
-  const activeNotes = notes.filter((n) => !n.isTrashed && !n.isArchived);
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces?.[0] || null;
 
-  // Stats calculation
-  const totalNotesCount = activeNotes.length;
-  const pinnedCount = activeNotes.filter((n) => n.isPinned).length;
-  const sharedCount = activeNotes.filter((n) => n.isShared).length;
-  const favoriteCount = activeNotes.filter((n) => n.isFavorite).length;
-  const draftCount = activeNotes.filter((n) => n.status === "Draft" || n.tags.includes("Draft")).length;
-  const publishedCount = activeNotes.filter((n) => n.status === "Published" || n.tags.includes("Published")).length;
-  const archivedCount = notes.filter((n) => n.isArchived).length;
-  const trashCount = notes.filter((n) => n.isTrashed).length;
+  const {
+    activeNotes,
+    totalNotesCount,
+    pinnedCount,
+    sharedCount,
+    favoriteCount,
+    draftCount,
+    publishedCount,
+    archivedCount,
+    trashCount,
+    storageUsed,
+    storageLimit,
+    storagePercentage,
+  } = useMemo(() => {
+    const actNotes = notes.filter((n) => !n.isTrashed && !n.isArchived);
+    const total = actNotes.length;
+    const pinned = actNotes.filter((n) => n.isPinned).length;
+    const shared = actNotes.filter((n) => n.isShared).length;
+    const favorite = actNotes.filter((n) => n.isFavorite).length;
+    const draft = actNotes.filter((n) => n.status === "Draft" || (n.tags && n.tags.includes("Draft"))).length;
+    const published = actNotes.filter((n) => n.status === "Published" || (n.tags && n.tags.includes("Published"))).length;
+    const archived = notes.filter((n) => n.isArchived).length;
+    const trash = notes.filter((n) => n.isTrashed).length;
 
-  const storageUsed = (notes.reduce((acc, note) => acc + (note.content?.length || 0), 0) / 1024).toFixed(2); // KB
-  const storageLimit = (activeWorkspace?.storageQuota || 5) * 1024; // MB to KB
-  const storagePercentage = Math.min((parseFloat(storageUsed) / storageLimit) * 100, 100).toFixed(1);
+    const usedKb = (notes.reduce((acc, note) => acc + (note.content?.length || 0), 0) / 1024).toFixed(2);
+    const quotaVal = activeWorkspace?.storageQuota || 5 * 1024 * 1024;
+    const limitKb = quotaVal > 10000 ? quotaVal / 1024 : quotaVal * 1024;
+    const pct = limitKb > 0 ? Math.min((parseFloat(usedKb) / limitKb) * 100, 100).toFixed(1) : "0.0";
+
+    return {
+      activeNotes: actNotes,
+      totalNotesCount: total,
+      pinnedCount: pinned,
+      sharedCount: shared,
+      favoriteCount: favorite,
+      draftCount: draft,
+      publishedCount: published,
+      archivedCount: archived,
+      trashCount: trash,
+      storageUsed: usedKb,
+      storageLimit: limitKb,
+      storagePercentage: pct,
+    };
+  }, [notes, activeWorkspace]);
 
   const topTags = useMemo(() => {
     const counts: Record<string, number> = {};
     activeNotes.forEach((note) => {
-      note.tags.forEach((tag) => {
+      note.tags?.forEach((tag) => {
         counts[tag] = (counts[tag] || 0) + 1;
       });
     });
@@ -1158,7 +1188,7 @@ export default function Sidebar({
                 Cloud Storage Sync
               </span>
               <span className="text-slate-500 dark:text-zinc-400 font-mono">
-                {storageUsed}KB / {activeWorkspace?.storageQuota || 5}MB
+                {storageUsed}KB / {activeWorkspace?.storageQuota ? (activeWorkspace.storageQuota > 10000 ? Math.round(activeWorkspace.storageQuota / (1024 * 1024)) : activeWorkspace.storageQuota) : 5}MB
               </span>
             </div>
             <div className="w-full h-1 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">

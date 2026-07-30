@@ -152,7 +152,7 @@ export default function NotesList({
 
   const folderHeading = useMemo(() => {
     if (!activeFolder) return "All Notes";
-    if (["All Notes", "Pinned", "Favorites", "Shared", "Drafts", "Published", "Archived", "Trash"].includes(activeFolder)) {
+    if (["All Notes", "Pinned", "Favorites", "Shared", "Drafts", "Published", "Archive", "Trash"].includes(activeFolder)) {
       return activeFolder;
     }
     const found = folders.find(f => f.id === activeFolder);

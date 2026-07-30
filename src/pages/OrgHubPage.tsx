@@ -89,13 +89,19 @@ export default function OrgHubPage({
   const handleDismissInvites = () => setShowInvitesBanner(false);
 
   const handleAcceptInvite = (id: string) => {
-    setInvites(invites.filter(inv => inv.id !== id));
-    if (invites.length === 1) setShowInvitesBanner(false);
+    setInvites(prev => {
+      const updated = prev.filter(inv => inv.id !== id);
+      if (updated.length === 0) setShowInvitesBanner(false);
+      return updated;
+    });
   };
 
   const handleDeclineInvite = (id: string) => {
-    setInvites(invites.filter(inv => inv.id !== id));
-    if (invites.length === 1) setShowInvitesBanner(false);
+    setInvites(prev => {
+      const updated = prev.filter(inv => inv.id !== id);
+      if (updated.length === 0) setShowInvitesBanner(false);
+      return updated;
+    });
   };
 
   // Helper classes for glassmorphism
