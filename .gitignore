@@ -1,8 +1,15 @@
-node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
-.env*
+
 !.env.example
+# Per-user local JSON databases (contain personal data)
+*.log
+.DS_Store
+.aura-data/
+.collab-data/
+.env*
+agent-runs*.json
+build/
+coverage/
+dist/
+folders-db*.json
+node_modules/
+notes-db*.json

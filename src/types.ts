@@ -270,3 +270,72 @@ export interface OrgInvitation {
   sentAt: string;
   expiresAt: string;
 }
+
+// ── Aura v3.0 Enterprise Agentic Platform Types ─────────────────────────────
+
+export type AgentAutonomyLevel = "autonomous" | "require_approval" | "advisory_only";
+
+export type AgentTriggerType = "manual" | "on_note_publish" | "scheduled_daily" | "on_compliance_flag";
+
+export type AgentToolName =
+  | "search_workspace_notes"
+  | "create_structured_note"
+  | "update_existing_note"
+  | "organize_notes_into_folders"
+  | "create_workspace_reminders"
+  | "run_compliance_audit";
+
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  icon: string;
+  color: string;
+  systemPrompt: string;
+  allowedTools: AgentToolName[];
+  autonomyLevel: AgentAutonomyLevel;
+  trigger: AgentTriggerType;
+  departmentScope?: string;
+  isEnabled: boolean;
+  isBuiltIn?: boolean;
+  totalRuns?: number;
+  lastRunAt?: string;
+}
+
+export interface AgentToolCall {
+  id: string;
+  toolName: AgentToolName;
+  args: Record<string, any>;
+  status: "pending_approval" | "executed" | "rejected" | "failed";
+  resultSummary?: string;
+  requiresApproval?: boolean;
+}
+
+export interface AgentExecutionStep {
+  id: string;
+  type: "thought" | "tool_call" | "observation" | "approval_gate" | "final_answer";
+  title: string;
+  detail: string;
+  timestamp: string;
+  durationMs?: number;
+  toolCall?: AgentToolCall;
+}
+
+export interface AgentRun {
+  id: string;
+  orgId: string;
+  workspaceId: string;
+  agentId: string;
+  agentName: string;
+  userEmail: string;
+  goal: string;
+  status: "running" | "awaiting_approval" | "completed" | "failed" | "rejected";
+  steps: AgentExecutionStep[];
+  pendingToolCalls?: AgentToolCall[];
+  finalSummary?: string;
+  tokensUsed: number;
+  createdAt: string;
+  completedAt?: string;
+}
+

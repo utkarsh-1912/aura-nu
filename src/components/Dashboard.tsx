@@ -1,45 +1,12 @@
 import React, { useState, useMemo } from "react";
 import {
-  Sparkles,
-  TrendingUp,
-  FileText,
-  Pin,
-  CheckCircle2,
-  Calendar as CalendarIcon,
-  Clock,
-  ArrowRight,
-  Plus,
-  Trash2,
-  Layers,
-  Award,
-  Zap,
-  Bookmark,
-  Users,
-  Shield,
-  HardDrive,
-  Send,
-  Share2,
-  Copy,
-  Move,
-  Check,
-  Globe,
-  Lock,
-  Settings as SettingsIcon,
-  Activity as ActivityIcon,
-  ChevronRight,
-  UserPlus,
-  FileCode,
-  Terminal,
-  SlidersHorizontal,
-  AlertTriangle,
-  Download,
-  Upload,
-  User,
-  Key,
-  ShieldAlert,
-  ChevronLeft,
-  X
+  Sparkles, TrendingUp, FileText, Pin, CheckCircle2, Calendar as CalendarIcon, Clock, ArrowRight, Plus, Trash2,
+  Layers, Bookmark, Users, Shield, HardDrive, Send, Share2, Copy, Move, Globe, Lock, Activity as ActivityIcon,
+  ChevronRight, UserPlus, Terminal, SlidersHorizontal, Key, ShieldAlert, ChevronLeft, X, MoreHorizontal,
 } from "lucide-react";
+import { Button, IconButton, Input, Field, Select, Switch, Dialog, Menu, Tabs, Badge, Avatar, Skeleton, EmptyState, cn } from "../ui";
+import type { MenuEntry } from "../ui";
+import { Card, StatTile, StatTileSkeleton, BarRow, InlineEmpty, timeAgo } from "./dashboard/parts";
 import { Note, Reminder, Activity, Workspace, WorkspaceRole, WorkspaceType, WorkspaceMember, WorkspaceInvitation, AuditLogEntry, Department, Project } from "../types";
 
 interface DashboardProps {
@@ -140,7 +107,7 @@ export default function Dashboard({
       .map((n) => ({ note: n, time: new Date(n.updatedAt).getTime() }))
       .sort((a, b) => b.time - a.time)
       .map((item) => item.note)
-      .slice(0, 4);
+      .slice(0, 6);
   }, [workspaceNotes]);
 
   const sharedNotes = useMemo(() => {
@@ -402,1151 +369,676 @@ export default function Dashboard({
     setNewFolderName("");
   };
 
-  // Mini Calendar Calculations
-  const calendarDays = useMemo(() => {
-    const days = [];
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    
-    // First day of current month
-    const firstDayIndex = new Date(year, month, 1).getDay();
-    const totalDays = new Date(year, month + 1, 0).getDate();
+  const [policies, setPolicies] = useState<Record<string, boolean>>({ sso: true, enc: false, compliance: true });
 
-    // Fill empty offset days
-    for (let i = 0; i < firstDayIndex; i++) {
-      days.push({ day: "", currentMonth: false });
-    }
+  const tagStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    workspaceNotes.forEach((n) => (n.tags || []).forEach((t) => (counts[t] = (counts[t] || 0) + 1)));
+    return Object.entries(counts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 16);
+  }, [workspaceNotes]);
 
-    // Fill actual month days
-    for (let d = 1; d <= totalDays; d++) {
-      // Check if there are tasks or notes on this day
-      const isToday = d === date.getDate();
-      days.push({ day: d, currentMonth: true, isToday });
+  const recentActivities = useMemo(
+    () => [...workspaceActivities].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 6),
+    [workspaceActivities],
+  );
+
+  const openReminders = workspaceReminders.filter((r) => !r.completed).length;
+  const isLoading = !activeWorkspace;
+  const userName = (currentUserEmail || "there").split("@")[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const defaultFolder = folderStats[0]?.name || "General";
+  const storageQuotaMb = activeWorkspace?.storageQuota
+    ? activeWorkspace.storageQuota > 10000
+      ? Math.round(activeWorkspace.storageQuota / (1024 * 1024))
+      : activeWorkspace.storageQuota
+    : 5;
+
+  const closeCrossAction = () => {
+    setSelectedNoteForAction(null);
+    setCrossActionType(null);
+  };
+
+  const noteMenu = (note: Note): MenuEntry[] => {
+    const items: MenuEntry[] = [];
+    if (hasPermission("edit")) {
+      const otherWs = workspaces.find((w) => w.id !== activeWorkspaceId)?.id || "";
+      items.push(
+        { id: "copy", label: "Copy to workspace", icon: <Copy size={13} />, onSelect: () => { setSelectedNoteForAction(note); setCrossActionType("copy"); setTargetWorkspaceId(otherWs); } },
+        { id: "move", label: "Move to workspace", icon: <Move size={13} />, onSelect: () => { setSelectedNoteForAction(note); setCrossActionType("move"); setTargetWorkspaceId(otherWs); } },
+        { id: "dup", label: "Duplicate", icon: <Plus size={13} />, onSelect: () => onDuplicateNote(note.id) },
+      );
     }
-    return days;
-  }, []);
+    if (hasPermission("delete")) {
+      if (items.length) items.push("separator");
+      items.push({ id: "trash", label: "Move to trash", icon: <Trash2 size={13} />, danger: true, onSelect: () => { setSelectedNoteForAction(note); setCrossActionType("delete"); } });
+    }
+    return items;
+  };
+
+  const backLink = (label: string, onClick: () => void) => (
+    <Button variant="ghost" size="sm" onClick={onClick} leadingIcon={<ChevronLeft size={13} />}>{label}</Button>
+  );
+
+  const treeCard = (key: string, icon: React.ReactNode, title: string, meta: string, onClick: () => void) => (
+    <button
+      key={key}
+      onClick={onClick}
+      className="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border border-line bg-panel p-3 text-left transition-colors hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent" aria-hidden>{icon}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-medium text-fg">{title}</span>
+          <span className="block text-[12px] text-fg-muted">{meta}</span>
+        </span>
+      </span>
+      <ChevronRight size={14} className="shrink-0 text-fg-subtle" aria-hidden />
+    </button>
+  );
+
+  const addForm = (onSubmit: (e: React.FormEvent) => void, value: string, setValue: (v: string) => void, label: string, placeholder: string, cta: string) => (
+    <form onSubmit={onSubmit} className="mt-5 flex max-w-md items-end gap-2">
+      <div className="flex-1">
+        <Field label={label}>{(p) => <Input {...p} value={value} onChange={(e) => setValue(e.target.value)} placeholder={placeholder} />}</Field>
+      </div>
+      <Button type="submit" variant="primary" disabled={!value.trim()}>{cta}</Button>
+    </form>
+  );
+
+  const deptSel = activeWorkspace?.departments?.find((d) => d.id === selectedDeptId);
+  const projSel = deptSel?.projects.find((p) => p.id === selectedProjectId);
+
+  const tabItems = [
+    { id: "overview" as const, label: "Overview", icon: <TrendingUp size={13} /> },
+    { id: "org" as const, label: "Departments", icon: <Layers size={13} /> },
+    { id: "invites" as const, label: "Members", icon: <Users size={13} /> },
+    { id: "admin" as const, label: "Admin", icon: <Shield size={13} /> },
+  ];
 
   return (
-    <div
-      id="dashboard-view-panel"
-      className="flex-grow h-full overflow-y-auto p-6 md:p-8 transition-colors duration-200 bg-bg-primary text-text-primary"
-    >
-      {/* Workspace Header Banner */}
-      <div className="max-w-5xl mx-auto mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full ${
-                activeWorkspace?.type === "Personal" ? "bg-amber-500/10 text-amber-500" :
-                activeWorkspace?.type === "Team" ? "bg-blue-500/10 text-blue-500" :
-                activeWorkspace?.type === "Organization" ? "bg-purple-500/10 text-purple-500" :
-                activeWorkspace?.type === "Client" ? "bg-emerald-500/10 text-emerald-500" :
-                "bg-cyan-500/10 text-cyan-500"
-              }`}>
-                {activeWorkspace?.type || "Personal"} Workspace
-              </span>
-              <span className="text-[10px] bg-slate-500/10 text-slate-400 font-mono px-2 py-0.5 rounded-md">
-                Role: {activeWorkspace?.role || "Owner"}
-              </span>
-            </div>
-            <h1 className="font-display font-black text-[30px] md:text-[34px] tracking-tight mt-2.5 text-slate-900 dark:text-white flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-display text-base text-white font-extrabold bg-gradient-to-tr ${
-                activeWorkspace?.type === "Personal" ? "from-amber-400 to-orange-500" :
-                activeWorkspace?.type === "Team" ? "from-blue-500 to-indigo-600" :
-                activeWorkspace?.type === "Organization" ? "from-purple-500 to-pink-600" :
-                activeWorkspace?.type === "Client" ? "from-emerald-400 to-teal-600" :
-                "from-cyan-500 to-blue-600"
-              }`}>
-                {activeWorkspace?.name[0].toUpperCase()}
-              </div>
-              {activeWorkspace?.name || "Workspace Dashboard"}
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-xl">
-              Isolated enterprise environment node. Create, isolate, secure, and index files instantly.
-            </p>
-          </div>
-
-          {/* Quick Stats Block */}
-          <div className="flex items-center gap-3 bg-slate-100/40 dark:bg-zinc-900/40 border border-slate-200/40 dark:border-zinc-800/40 p-3 rounded-2xl">
-            <HardDrive size={15} className="text-slate-400" />
-            <div className="flex flex-col">
-              <span className="text-[10px] text-slate-400 font-mono">Storage usage</span>
-              <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                {actualStorageUsed} KB / {activeWorkspace?.storageQuota ? (activeWorkspace.storageQuota > 10000 ? Math.round(activeWorkspace.storageQuota / (1024 * 1024)) : activeWorkspace.storageQuota) : 5} MB
-              </span>
+    <div id="dashboard-view-panel" className="h-full flex-grow overflow-y-auto bg-surface px-4 py-6 text-fg md:px-8 md:py-8">
+      <div className="mx-auto max-w-5xl space-y-6">
+        {/* Header */}
+        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            <p className="text-[13px] text-fg-muted">{greeting}, <span className="capitalize">{userName}</span></p>
+            {isLoading ? (
+              <Skeleton className="mt-2 h-7 w-56" />
+            ) : (
+              <h1 className="mt-1 flex items-center gap-2.5 text-[20px] font-semibold text-fg">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-semibold text-accent" aria-hidden>
+                  {activeWorkspace?.name?.[0]?.toUpperCase() || "W"}
+                </span>
+                <span className="truncate">{activeWorkspace?.name || "Workspace"}</span>
+              </h1>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <Badge tone="accent">{activeWorkspace?.type || "Personal"} workspace</Badge>
+              <Badge>Role: {activeWorkspace?.role || "Owner"}</Badge>
             </div>
           </div>
-        </div>
+          <div className="flex items-center gap-2.5 rounded-lg border border-line bg-panel px-3 py-2">
+            <HardDrive size={14} className="text-fg-muted" aria-hidden />
+            <div>
+              <p className="text-[11px] text-fg-subtle">Storage</p>
+              <p className="text-[13px] font-medium text-fg">{actualStorageUsed} KB / {storageQuotaMb} MB</p>
+            </div>
+          </div>
+        </header>
 
-        {/* Dashboard Sub-navigation Tabs */}
-        <div className="flex gap-1.5 mt-6 border-b border-slate-200/60 dark:border-zinc-800/80 pb-0.5 overflow-x-scroll scrollbar-thin scrollbar-thumb-slate-300/40 dark:scrollbar-thumb-zinc-700/40 scrollbar-track-transparent">
-          {[
-            { id: "overview", label: "Overview", icon: TrendingUp },
-            { id: "org", label: "Departments & Projects", icon: Layers },
-            { id: "invites", label: "Members & Invites", icon: Users },
-            { id: "admin", label: "Admin Console", icon: Shield },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                  isActive
-                    ? "bg-blue-500 text-white font-bold"
-                    : "text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
-                }`}
-              >
-                <Icon size={13} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+        <Tabs value={activeTab} onChange={(v: string) => setActiveTab(v as typeof activeTab)} items={tabItems} className="overflow-x-auto" />
 
-      {/* Grid Content Switcher */}
-      <div className="max-w-5xl mx-auto">
-        
-        {/* VIEW 1: OVERVIEW TAB */}
+        {/* OVERVIEW */}
         {activeTab === "overview" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* Left Column (Recent documents, AI Insights) */}
-            <div className="md:col-span-2 flex flex-col gap-6">
-              
-              {/* Analytics Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className={`p-4 rounded-2xl border ${
-                  "bg-bg-secondary border-border-primary"
-                } shadow-xs`}>
-                  <span className="text-slate-400 dark:text-zinc-500 text-xs font-medium">Total Notes</span>
-                  <div className="font-display font-black text-2xl mt-1 text-slate-900 dark:text-white">{totalNotesCount}</div>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 block font-mono">Isolated Files</span>
-                </div>
-
-                <div className={`p-4 rounded-2xl border ${
-                  "bg-bg-secondary border-border-primary"
-                } shadow-xs`}>
-                  <span className="text-slate-400 dark:text-zinc-500 text-xs font-medium">Words Logged</span>
-                  <div className="font-display font-black text-2xl mt-1 text-slate-900 dark:text-white">{wordCountSum}</div>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 block font-mono">Total Volume</span>
-                </div>
-
-                <div className={`p-4 rounded-2xl border ${
-                  "bg-bg-secondary border-border-primary"
-                } shadow-xs`}>
-                  <span className="text-slate-400 dark:text-zinc-500 text-xs font-medium">Members</span>
-                  <div className="font-display font-black text-2xl mt-1 text-slate-900 dark:text-white">{(activeWorkspace?.members || []).length}</div>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 block font-mono">Access Keys</span>
-                </div>
-              </div>
-
-              {/* Recent Notes Table (With Action Menus) */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
-                    <Clock size={15} className="text-blue-500" />
-                    Documents
-                  </h3>
-                  <span className="text-[10px] font-mono text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-900 px-2.5 py-1 rounded-md">
-                    {recentNotes.length} files
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-2.5">
-                  {recentNotes.map((note) => (
-                    <div
-                      key={note.id}
-                      className={`p-3.5 rounded-xl border flex items-center justify-between group transition-all ${
-                        theme === "dark"
-                          ? "bg-zinc-900/50 border-zinc-850 hover:bg-zinc-850"
-                          : "bg-slate-50/40 border-slate-100 hover:bg-white hover:shadow-xs hover:border-slate-200"
-                      }`}
-                    >
-                      <div
-                        onClick={() => setActiveNoteId(note.id)}
-                        className="flex items-center gap-3 cursor-pointer flex-grow min-w-0 pr-4"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 flex-shrink-0">
-                          <FileText size={15} />
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 group-hover:text-blue-500 transition-colors truncate">
-                            {note.title}
-                          </span>
-                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono mt-0.5 truncate">
-                            {note.folder} • {note.tags.join(", ") || "No tags"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Document Actions Menu */}
-                      <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all">
-                        {hasPermission("edit") && (
-                          <>
-                            {/* Copy Note to other workspace */}
-                            <button
-                              onClick={() => {
-                                setSelectedNoteForAction(note);
-                                setCrossActionType("copy");
-                                setTargetWorkspaceId(workspaces.find((w) => w.id !== activeWorkspaceId)?.id || "");
-                              }}
-                              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 cursor-pointer"
-                              title="Copy to Workspace"
-                            >
-                              <Copy size={11} />
-                            </button>
-
-                            {/* Move Note to other workspace */}
-                            <button
-                              onClick={() => {
-                                setSelectedNoteForAction(note);
-                                setCrossActionType("move");
-                                setTargetWorkspaceId(workspaces.find((w) => w.id !== activeWorkspaceId)?.id || "");
-                              }}
-                              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 cursor-pointer"
-                              title="Move to Workspace"
-                            >
-                              <Move size={11} />
-                            </button>
-
-                            {/* Duplicate note within current workspace */}
-                            <button
-                              onClick={() => onDuplicateNote(note.id)}
-                              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 cursor-pointer"
-                              title="Duplicate note"
-                            >
-                              <Plus size={11} />
-                            </button>
-                          </>
-                        )}
-
-                        {hasPermission("delete") && (
-                          <button
-                            onClick={() => {
-                              setSelectedNoteForAction(note);
-                              setCrossActionType("delete");
-                            }}
-                            className="p-1.5 rounded bg-red-100 hover:bg-red-200 dark:bg-red-950/40 dark:hover:bg-red-950 text-red-500 cursor-pointer"
-                            title="Trash note"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Arrow indication */}
-                      <div className="flex items-center gap-2 group-hover:hidden pl-1">
-                        {note.isPinned && <Pin size={11} className="text-amber-500 fill-amber-500" />}
-                        {note.isShared && <Share2 size={11} className="text-blue-500" />}
-                      </div>
-                    </div>
-                  ))}
-
-                  {recentNotes.length === 0 && (
-                    <div className="h-28 flex flex-col items-center justify-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-zinc-800 rounded-xl">
-                      <FileText size={20} className="mb-2 text-slate-300" />
-                      <span>This workspace has no notes yet.</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Shared Documents Panel */}
-              {sharedNotes.length > 0 && (
-                <div className={`p-5 rounded-2xl border ${
-                  "bg-bg-secondary border-border-primary"
-                } shadow-xs`}>
-                  <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-                    <Share2 size={15} className="text-emerald-500" />
-                    Shared & Public Assets
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {sharedNotes.map((note) => (
-                      <div
-                        key={note.id}
-                        onClick={() => setActiveNoteId(note.id)}
-                        className={`p-3 rounded-xl border border-slate-100 dark:border-zinc-850 hover:border-slate-200 dark:hover:border-zinc-800 cursor-pointer transition-colors flex items-center gap-2.5 ${
-                          theme === "dark" ? "bg-zinc-950/20" : "bg-slate-50/20"
-                        }`}
-                      >
-                        <Globe size={13} className="text-emerald-500 shrink-0" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-semibold text-slate-800 dark:text-zinc-200 truncate">{note.title}</span>
-                          <span className="text-[9px] text-slate-400 dark:text-zinc-500 font-mono">Shared External</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+          <div className="space-y-6">
+            {/* Quick actions */}
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Quick actions">
+              <Button variant="primary" className="max-md:!h-10" leadingIcon={<Plus size={14} />} disabled={!hasPermission("create")} onClick={() => onNewNoteWithContent("Untitled note", "", defaultFolder, [])}>
+                New note
+              </Button>
+              <Button className="max-md:!h-10" leadingIcon={<CalendarIcon size={14} />} disabled={!hasPermission("create")} onClick={() => onNewNoteWithContent("Meeting notes", "## Attendees\n\n## Agenda\n\n## Decisions\n\n## Action items\n- [ ] ", defaultFolder, ["meeting"])}>
+                Meeting notes
+              </Button>
+              <Button className="max-md:!h-10" leadingIcon={<CheckCircle2 size={14} />} disabled={!hasPermission("create")} onClick={() => onNewNoteWithContent("Checklist", "- [ ] \n- [ ] \n- [ ] ", defaultFolder, [])}>
+                Checklist
+              </Button>
+              {recentNotes[0] && (
+                <Button variant="ghost" className="max-md:!h-10" trailingIcon={<ArrowRight size={13} />} onClick={() => setActiveNoteId(recentNotes[0].id)}>
+                  Continue last note
+                </Button>
               )}
-
-              {/* AI History Logs & Insights */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-                  <Sparkles size={15} className="text-indigo-500 animate-pulse" />
-                  Contextual AI Activity & Insights
-                </h3>
-                {activeWorkspace?.aiHistory && activeWorkspace.aiHistory.length > 0 ? (
-                  <div className="flex flex-col gap-2">
-                    {activeWorkspace.aiHistory.map((h, i) => (
-                      <div key={i} className="p-3 bg-indigo-50/30 dark:bg-indigo-950/10 rounded-xl border border-indigo-100/50 dark:border-indigo-950/40 text-[11px]">
-                        <div className="font-semibold text-slate-800 dark:text-zinc-200 flex items-center gap-1">
-                          <Terminal size={11} className="text-indigo-400" />
-                          <span>Prompt: "{h.prompt}"</span>
-                        </div>
-                        <p className="text-slate-500 dark:text-zinc-400 mt-1 leading-relaxed">
-                          {h.result}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-3.5 bg-slate-50 dark:bg-zinc-950/40 rounded-xl text-[11px] text-slate-400 leading-relaxed border border-dashed border-slate-200 dark:border-zinc-850">
-                    Your workspace AI assistant logs summarize prompt interactions automatically here. Try asking Gemini to summarize or write checklists within notes to populate these logs.
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* Right Column (Reminders, Calendar, Members Summary) */}
-            <div className="flex flex-col gap-6">
-              
-              {/* Reminders & Actions */}
-              <div className={`p-5 rounded-2xl border flex flex-col h-[280px] ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-                  <CheckCircle2 size={15} className="text-blue-500" />
-                  Reminders & Tasks
-                </h3>
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {isLoading ? (
+                [0, 1, 2, 3].map((i) => <StatTileSkeleton key={i} />)
+              ) : (
+                <>
+                  <StatTile label="Notes" value={totalNotesCount} />
+                  <StatTile label="Words written" value={wordCountSum.toLocaleString()} />
+                  <StatTile label="Pinned" value={pinnedNotes.length} hint={`${sharedNotes.length} shared`} />
+                  <StatTile label="Avg. read time" value={`${avgReadingTime} min`} hint={`${openReminders} open tasks`} />
+                </>
+              )}
+            </div>
 
-                {/* Checklist */}
-                <div className="flex-grow overflow-y-auto flex flex-col gap-2 pb-2 scrollbar-none no-scrollbar">
-                  {workspaceReminders.map((rem) => (
-                    <div
-                      key={rem.id}
-                      className="flex items-start gap-2 group justify-between"
-                    >
-                      <div className="flex items-start gap-2 min-w-0">
-                        <button
-                          onClick={() => onToggleReminder(rem.id)}
-                          className={`mt-0.5 w-4.5 h-4.5 rounded-full border flex items-center justify-center flex-shrink-0 transition-all ${
-                            rem.completed
-                              ? "bg-emerald-500 border-emerald-500 text-white"
-                              : "border-slate-300 dark:border-zinc-700 hover:border-emerald-400"
-                          } cursor-pointer`}
-                        >
-                          {rem.completed && <Check size={10} className="stroke-[3]" />}
-                        </button>
-                        <span className={`text-xs leading-tight break-all ${
-                          rem.completed ? "line-through text-slate-400 dark:text-zinc-500" : "text-slate-700 dark:text-zinc-200 font-medium"
-                        }`}>
-                          {rem.text}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => onDeleteReminder(rem.id)}
-                        className="text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all cursor-pointer"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+                <Card title="Recent notes" icon={<Clock size={14} />} right={`${recentNotes.length} shown`} bodyClassName="p-2">
+                  {isLoading ? (
+                    <div className="space-y-2 p-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+                  ) : recentNotes.length === 0 ? (
+                    <div className="p-2">
+                      <EmptyState
+                        icon={<FileText size={18} />}
+                        title="No notes yet"
+                        description="Create your first note to see it here."
+                        action={<Button variant="primary" size="sm" disabled={!hasPermission("create")} onClick={() => onNewNoteWithContent("Untitled note", "", defaultFolder, [])}>New note</Button>}
+                      />
                     </div>
-                  ))}
-
-                  {workspaceReminders.length === 0 && (
-                    <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
-                      <CalendarIcon size={18} className="mb-1" />
-                      <span className="text-[10px]">No pending reminders</span>
-                    </div>
+                  ) : (
+                    <ul>
+                      {recentNotes.map((note) => {
+                        const menu = noteMenu(note);
+                        return (
+                          <li key={note.id} className="flex items-center gap-1 rounded-md hover:bg-hover">
+                            <button
+                              onClick={() => setActiveNoteId(note.id)}
+                              className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-accent"
+                            >
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-hover text-fg-muted" aria-hidden><FileText size={14} /></span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="truncate text-[13px] font-medium text-fg">{note.title || "Untitled"}</span>
+                                  {note.isPinned && <Pin size={11} className="shrink-0 text-fg-subtle" aria-label="Pinned" />}
+                                  {note.isShared && <Share2 size={11} className="shrink-0 text-fg-subtle" aria-label="Shared" />}
+                                </span>
+                                <span className="block truncate text-[12px] text-fg-muted">
+                                  {note.folder} · {(note.tags || []).join(", ") || "No tags"} · {timeAgo(note.updatedAt)}
+                                </span>
+                              </span>
+                            </button>
+                            {menu.length > 0 && (
+                              <Menu
+                                align="end"
+                                items={menu}
+                                trigger={({ props }) => (
+                                  <IconButton label={`Actions for ${note.title || "note"}`} {...props} className="mr-1 max-md:!h-10 max-md:!w-10">
+                                    <MoreHorizontal size={15} />
+                                  </IconButton>
+                                )}
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
+                </Card>
+
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <Card title="Folders" icon={<Layers size={14} />}>
+                    {folderStats.length === 0 ? (
+                      <InlineEmpty>Folders appear once you add notes.</InlineEmpty>
+                    ) : (
+                      <ul className="space-y-3">
+                        {folderStats.slice(0, 6).map((f) => (
+                          <BarRow key={f.name} label={f.name} count={f.count} percent={f.percentage} />
+                        ))}
+                      </ul>
+                    )}
+                  </Card>
+                  <Card title="Tags" icon={<Bookmark size={14} />}>
+                    {tagStats.length === 0 ? (
+                      <InlineEmpty>No tags yet. Tag notes to see themes here.</InlineEmpty>
+                    ) : (
+                      <ul className="flex flex-wrap gap-1.5">
+                        {tagStats.map((t, i) => (
+                          <li key={t.tag}>
+                            <Badge tone={i < 3 ? "accent" : "neutral"} className="h-6 px-2 text-[12px]">
+                              {t.tag}
+                              <span className="text-fg-subtle tabular-nums">{t.count}</span>
+                            </Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Card>
                 </div>
 
-                {/* Form */}
-                <form onSubmit={handleReminderSubmit} className="flex gap-1.5 mt-auto pt-2 border-t border-slate-100 dark:border-zinc-800">
-                  <input
-                    type="text"
-                    placeholder="Create reminder..."
-                    value={newReminderText}
-                    onChange={(e) => setNewReminderText(e.target.value)}
-                    className={`flex-grow text-[11px] px-3 py-2 rounded-xl border outline-none ${
-                      theme === "dark"
-                        ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                        : "bg-slate-100/60 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                    }`}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newReminderText.trim()}
-                    className={`p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl shadow-xs flex items-center justify-center flex-shrink-0 ${
-                      !newReminderText.trim() ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-                    }`}
-                  >
-                    <Plus size={13} />
-                  </button>
-                </form>
+                {sharedNotes.length > 0 && (
+                  <Card title="Shared notes" icon={<Share2 size={14} />} right={`${sharedNotes.length}`}>
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {sharedNotes.map((note) => (
+                        <li key={note.id}>
+                          <button onClick={() => setActiveNoteId(note.id)} className="flex min-h-10 w-full items-center gap-2 rounded-md border border-line px-2.5 py-2 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent">
+                            <Globe size={13} className="shrink-0 text-fg-muted" aria-hidden />
+                            <span className="truncate text-[13px] text-fg">{note.title}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
+
+                <Card title="AI activity" icon={<Sparkles size={14} />}>
+                  {activeWorkspace?.aiHistory && activeWorkspace.aiHistory.length > 0 ? (
+                    <ul className="space-y-2">
+                      {activeWorkspace.aiHistory.map((h, i) => (
+                        <li key={i} className="rounded-lg border border-line bg-surface p-3">
+                          <p className="flex items-center gap-1.5 text-[12px] font-medium text-fg">
+                            <Terminal size={11} className="text-fg-muted" aria-hidden />
+                            <span className="break-words">Prompt: "{h.prompt}"</span>
+                          </p>
+                          <p className="mt-1 text-[12px] leading-relaxed text-fg-muted break-words">{h.result}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <InlineEmpty icon={<Sparkles size={16} />}>Prompts you run in the AI panel are logged here.</InlineEmpty>
+                  )}
+                </Card>
               </div>
 
-              {/* Mini Calendar */}
-              <div className={`p-4 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
-                    <CalendarIcon size={13} className="text-blue-500" />
-                    <span>Workspace Calendar</span>
-                  </h4>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {new Date().toLocaleDateString([], { month: "short", year: "numeric" })}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-mono text-slate-400 mb-1">
-                  <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
-                </div>
-                <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold">
-                  {calendarDays.map((cd, idx) => (
-                    <div
-                      key={idx}
-                      className={`h-6 flex items-center justify-center rounded-lg ${
-                        cd.isToday
-                          ? "bg-blue-500 text-white"
-                          : cd.day
-                          ? "hover:bg-slate-100 dark:hover:bg-zinc-800/80 text-slate-700 dark:text-zinc-300"
-                          : "text-slate-300 dark:text-zinc-800"
-                      }`}
-                    >
-                      {cd.day}
+              <div className="flex min-w-0 flex-col gap-6">
+                <Card title="Reminders and tasks" icon={<CheckCircle2 size={14} />} right={`${openReminders} open`}>
+                  {workspaceReminders.length === 0 ? (
+                    <InlineEmpty icon={<CalendarIcon size={16} />}>Nothing due. Add a reminder below.</InlineEmpty>
+                  ) : (
+                    <ul className="max-h-64 space-y-0.5 overflow-y-auto">
+                      {workspaceReminders.map((rem) => (
+                        <li key={rem.id} className="flex items-center justify-between gap-2 rounded-md px-1 hover:bg-hover">
+                          <label className="flex min-h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 py-1 max-md:min-h-10">
+                            <input
+                              type="checkbox"
+                              checked={rem.completed}
+                              onChange={() => onToggleReminder(rem.id)}
+                              className="h-4 w-4 shrink-0 rounded border-line-strong accent-[var(--c-accent)]"
+                            />
+                            <span className={cn("break-words text-[13px]", rem.completed ? "text-fg-subtle line-through" : "text-fg")}>{rem.text}</span>
+                          </label>
+                          <IconButton label={`Delete reminder ${rem.text}`} size="sm" onClick={() => onDeleteReminder(rem.id)} className="max-md:!h-10 max-md:!w-10 hover:!text-danger">
+                            <Trash2 size={13} />
+                          </IconButton>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <form onSubmit={handleReminderSubmit} className="mt-3 flex gap-2 border-t border-line pt-3">
+                    <div className="flex-1">
+                      <Input aria-label="New reminder" placeholder="Add a reminder" value={newReminderText} onChange={(e) => setNewReminderText(e.target.value)} />
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <IconButton type="submit" label="Add reminder" variant="primary" disabled={!newReminderText.trim()} className="max-md:!h-10 max-md:!w-10">
+                      <Plus size={14} />
+                    </IconButton>
+                  </form>
+                </Card>
 
-              {/* Active Members Bar */}
-              <div className={`p-4 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100 mb-3 flex justify-between items-center">
-                  <span>Workspace Access</span>
-                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded font-mono">
-                    {(activeWorkspace?.members || []).length} users
-                  </span>
-                </h4>
-                <div className="flex flex-col gap-2">
-                  {(activeWorkspace?.members || []).map((m) => (
-                    <div key={m.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-[10px] text-white font-extrabold font-display">
-                          {m.name[0].toUpperCase()}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[11px] font-bold text-slate-800 dark:text-zinc-200 truncate max-w-[100px]">
-                            {m.name}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-[9px] font-mono text-slate-400 capitalize">{m.role}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                <Card title="Activity" icon={<ActivityIcon size={14} />}>
+                  {recentActivities.length === 0 ? (
+                    <InlineEmpty icon={<ActivityIcon size={16} />}>Edits, shares and AI runs show up here.</InlineEmpty>
+                  ) : (
+                    <ul className="space-y-3">
+                      {recentActivities.map((a) => (
+                        <li key={a.id} className="flex gap-2.5">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
+                          <div className="min-w-0">
+                            <p className="text-[13px] text-fg break-words">{a.text}</p>
+                            <p className="text-[11px] text-fg-subtle">{timeAgo(a.timestamp)}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
 
+                <Card title="Workspace access" icon={<Users size={14} />} right={`${(activeWorkspace?.members || []).length} users`}>
+                  <ul className="space-y-2">
+                    {(activeWorkspace?.members || []).map((m) => (
+                      <li key={m.id} className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Avatar name={m.name} size={24} />
+                          <span className="truncate text-[13px] text-fg">{m.name}</span>
+                        </span>
+                        <span className="shrink-0 text-[12px] capitalize text-fg-muted">{m.role}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
             </div>
-
           </div>
         )}
 
-        {/* VIEW 2: DEPARTMENTS & PROJECTS (Org Tree) */}
+        {/* DEPARTMENTS & PROJECTS */}
         {activeTab === "org" && (
-          <div className={`p-6 rounded-2xl border ${
-            "bg-bg-secondary border-border-primary"
-          } shadow-xs`}>
-            
-            {/* Breadcrumb Navigation */}
-            <div className="flex items-center gap-2 mb-6 bg-slate-100/50 dark:bg-zinc-900/50 p-2.5 rounded-xl border border-slate-200/40 dark:border-zinc-800/40 text-[11px] overflow-x-auto scrollbar-none whitespace-nowrap">
-              <Layers size={13} className="text-blue-500 shrink-0" />
+          <Card title="Departments and projects" icon={<Layers size={14} />}>
+            <nav aria-label="Breadcrumb" className="mb-5 flex items-center gap-1 overflow-x-auto whitespace-nowrap text-[13px]">
               <button
-                onClick={() => {
-                  setSelectedDeptId(null);
-                  setSelectedProjectId(null);
-                  setSelectedFolderId(null);
-                }}
-                className="hover:text-blue-500 cursor-pointer font-semibold text-slate-600 dark:text-zinc-300 shrink-0"
+                onClick={() => { setSelectedDeptId(null); setSelectedProjectId(null); setSelectedFolderId(null); }}
+                className="rounded px-1 font-medium text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent"
               >
                 {activeWorkspace?.name}
               </button>
-              
               {selectedDeptId && (
                 <>
-                  <ChevronRight size={10} className="text-slate-400 shrink-0" />
-                  <button
-                    onClick={() => {
-                      setSelectedProjectId(null);
-                      setSelectedFolderId(null);
-                    }}
-                    className="hover:text-blue-500 cursor-pointer text-slate-700 dark:text-zinc-200 font-semibold shrink-0"
-                  >
-                    {activeWorkspace?.departments?.find((d) => d.id === selectedDeptId)?.name}
-                  </button>
+                  <ChevronRight size={12} className="text-fg-subtle" aria-hidden />
+                  <button onClick={() => { setSelectedProjectId(null); setSelectedFolderId(null); }} className="rounded px-1 text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent">{deptSel?.name}</button>
                 </>
               )}
-
               {selectedProjectId && (
                 <>
-                  <ChevronRight size={10} className="text-slate-400 shrink-0" />
-                  <button
-                    onClick={() => setSelectedFolderId(null)}
-                    className="hover:text-blue-500 cursor-pointer text-slate-700 dark:text-zinc-200 font-semibold shrink-0"
-                  >
-                    {activeWorkspace?.departments
-                      ?.find((d) => d.id === selectedDeptId)
-                      ?.projects.find((p) => p.id === selectedProjectId)?.name}
-                  </button>
+                  <ChevronRight size={12} className="text-fg-subtle" aria-hidden />
+                  <button onClick={() => setSelectedFolderId(null)} className="rounded px-1 text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent">{projSel?.name}</button>
                 </>
               )}
-
               {selectedFolderId && (
                 <>
-                  <ChevronRight size={10} className="text-slate-400 shrink-0" />
-                  <span className="text-slate-400 font-mono shrink-0">{selectedFolderId}</span>
+                  <ChevronRight size={12} className="text-fg-subtle" aria-hidden />
+                  <span className="px-1 text-fg-muted">{selectedFolderId}</span>
                 </>
               )}
-            </div>
+            </nav>
 
-            {/* Tree renderer */}
-            <div>
-              {/* Level 1: Departments */}
-              {!selectedDeptId && (
-                <div>
-                  <div className="mb-4">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Departments</h3>
-                    <p className="text-[11px] text-slate-500">Select a department node within the organization.</p>
+            {!selectedDeptId && (
+              <div>
+                <p className="mb-3 text-[12px] text-fg-muted">Select a department.</p>
+                {(activeWorkspace?.departments || []).length === 0 ? (
+                  <InlineEmpty icon={<Layers size={16} />}>No departments yet.</InlineEmpty>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {(activeWorkspace?.departments || []).map((dept) => treeCard(dept.id, <Layers size={15} />, dept.name, `${dept.projects.length} projects`, () => setSelectedDeptId(dept.id)))}
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {activeWorkspace?.departments && activeWorkspace.departments.length > 0 &&
-                      activeWorkspace.departments.map((dept) => (
-                        <div
-                          key={dept.id}
-                          onClick={() => setSelectedDeptId(dept.id)}
-                          className={`p-4 rounded-xl border border-slate-100 dark:border-zinc-850 hover:border-blue-300 hover:shadow-xs cursor-pointer transition-all flex justify-between items-center ${
-                            theme === "dark" ? "bg-zinc-950/20 hover:bg-zinc-950/40" : "bg-slate-50/30 hover:bg-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                              <Layers size={15} />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{dept.name}</span>
-                              <span className="text-[9px] text-slate-400 font-mono mt-0.5">{dept.projects.length} Projects</span>
-                            </div>
-                          </div>
-                          <ChevronRight size={14} className="text-slate-400" />
-                        </div>
-                      ))}
-                  </div>
-
-                  {hasPermission("settings") && (
-                    <form onSubmit={handleAddDeptSubmit} className="mt-6 flex flex-col sm:flex-row gap-2 max-w-md">
-                      <input
-                        type="text"
-                        placeholder="New Department name (e.g. Sales)"
-                        value={newDeptName}
-                        onChange={(e) => setNewDeptName(e.target.value)}
-                        className={`text-xs px-3 py-2.5 rounded-xl border outline-none flex-grow ${
-                          theme === "dark"
-                            ? "bg-zinc-950 border-zinc-805 text-zinc-300 focus:border-zinc-700"
-                            : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                        }`}
-                      />
-                      <button type="submit" className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
-                        Add Department
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
-
-              {/* Level 2: Projects inside Department */}
-              {selectedDeptId && !selectedProjectId && (
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <button
-                      onClick={() => setSelectedDeptId(null)}
-                      className="text-xs text-blue-500 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-                    >
-                      <ChevronLeft size={13} />
-                      Back to Departments
-                    </button>
-                    <span className="text-[10px] font-mono text-slate-400">Department Node Selected</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {activeWorkspace?.departments
-                      ?.find((d) => d.id === selectedDeptId)
-                      ?.projects.map((proj) => (
-                        <div
-                          key={proj.id}
-                          onClick={() => setSelectedProjectId(proj.id)}
-                          className={`p-4 rounded-xl border border-slate-100 dark:border-zinc-850 hover:border-blue-300 hover:shadow-xs cursor-pointer transition-all flex justify-between items-center ${
-                            theme === "dark" ? "bg-zinc-950/20 hover:bg-zinc-950/40" : "bg-slate-50/30 hover:bg-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                              <SlidersHorizontal size={15} />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{proj.name}</span>
-                              <span className="text-[9px] text-slate-400 font-mono mt-0.5">{proj.folders.length} Folders</span>
-                            </div>
-                          </div>
-                          <ChevronRight size={14} className="text-slate-400" />
-                        </div>
-                      ))}
-                  </div>
-
-                  {hasPermission("settings") && (
-                    <form onSubmit={handleAddProjSubmit} className="mt-6 flex flex-col sm:flex-row gap-2 max-w-md">
-                      <input
-                        type="text"
-                        placeholder="New Project name (e.g. CRM System)"
-                        value={newProjName}
-                        onChange={(e) => setNewProjName(e.target.value)}
-                        className={`text-xs px-3 py-2.5 rounded-xl border outline-none flex-grow ${
-                          theme === "dark"
-                            ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                            : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                        }`}
-                      />
-                      <button type="submit" className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
-                        Add Project
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
-
-              {/* Level 3: Folders inside Project */}
-              {selectedProjectId && !selectedFolderId && (
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <button
-                      onClick={() => setSelectedProjectId(null)}
-                      className="text-xs text-blue-500 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-                    >
-                      <ChevronLeft size={13} />
-                      Back to Projects
-                    </button>
-                    <span className="text-[10px] font-mono text-slate-400">Project Node Selected</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {activeWorkspace?.departments
-                      ?.find((d) => d.id === selectedDeptId)
-                      ?.projects.find((p) => p.id === selectedProjectId)
-                      ?.folders.map((folder) => (
-                        <div
-                          key={folder}
-                          onClick={() => setSelectedFolderId(folder)}
-                          className={`p-4 rounded-xl border border-slate-100 dark:border-zinc-850 hover:border-blue-300 hover:shadow-xs cursor-pointer transition-all flex justify-between items-center ${
-                            theme === "dark" ? "bg-zinc-950/20 hover:bg-zinc-950/40" : "bg-slate-50/30 hover:bg-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                              <Bookmark size={15} />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{folder}</span>
-                              <span className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                {workspaceNotes.filter((n) => n.folder === folder && n.projectId === selectedProjectId).length} Notes
-                              </span>
-                            </div>
-                          </div>
-                          <ChevronRight size={14} className="text-slate-400" />
-                        </div>
-                      ))}
-                  </div>
-
-                  {hasPermission("settings") && (
-                    <form onSubmit={handleAddFolderSubmit} className="mt-6 flex flex-col sm:flex-row gap-2 max-w-md">
-                      <input
-                        type="text"
-                        placeholder="New Folder name (e.g. Specs)"
-                        value={newFolderName}
-                        onChange={(e) => setNewFolderName(e.target.value)}
-                        className={`text-xs px-3 py-2.5 rounded-xl border outline-none flex-grow ${
-                          theme === "dark"
-                            ? "bg-zinc-950 border-zinc-805 text-zinc-300 focus:border-zinc-700"
-                            : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                        }`}
-                      />
-                      <button type="submit" className="px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
-                        Add Folder
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
-
-              {/* Level 4: Notes inside Folder */}
-              {selectedFolderId && (
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <button
-                      onClick={() => setSelectedFolderId(null)}
-                      className="text-xs text-blue-500 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-                    >
-                      <ChevronLeft size={13} />
-                      Back to Folders
-                    </button>
-                    <span className="text-[10px] font-mono text-slate-400">Folder Node: {selectedFolderId}</span>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    {workspaceNotes
-                      .filter((n) => n.folder === selectedFolderId && n.projectId === selectedProjectId)
-                      .map((note) => (
-                        <div
-                          key={note.id}
-                          onClick={() => setActiveNoteId(note.id)}
-                          className={`p-3 rounded-xl border border-slate-100 dark:border-zinc-850 hover:border-blue-300 cursor-pointer flex items-center justify-between group transition-colors ${
-                            theme === "dark" ? "bg-zinc-900/50 hover:bg-zinc-900" : "bg-slate-50/30 hover:bg-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <FileText size={14} className="text-slate-400" />
-                            <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 group-hover:text-blue-500 transition-colors">
-                              {note.title}
-                            </span>
-                          </div>
-                          <ArrowRight size={12} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      ))}
-
-                    {workspaceNotes.filter((n) => n.folder === selectedFolderId && n.projectId === selectedProjectId).length === 0 && (
-                      <div className="text-center py-10 text-slate-400 text-xs border border-dashed border-slate-200 dark:border-zinc-850 rounded-xl bg-slate-50/40 dark:bg-zinc-950/20">
-                        No notes currently localized inside this nested folder node. Create or move notes here.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-
-        {/* VIEW 3: MEMBERS & INVITATIONS */}
-        {activeTab === "invites" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* Left Column (Members List) */}
-            <div className="md:col-span-2 flex flex-col gap-6">
-              
-              {/* Member lists */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-4">
-                  Active Workspace Team ({activeWorkspace?.members?.length || 0})
-                </h3>
-
-                <div className="flex flex-col gap-3">
-                  {(activeWorkspace?.members || []).map((m) => (
-                    <div key={m.id} className="p-3 bg-slate-50/50 dark:bg-zinc-900/40 border border-slate-100 dark:border-zinc-850/60 rounded-xl flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-pink-500 text-white flex items-center justify-center font-display font-black text-xs">
-                          {m.name[0].toUpperCase()}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-slate-850 dark:text-zinc-200">{m.name}</span>
-                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono mt-0.5">{m.email}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] bg-slate-200/50 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 px-2 py-0.5 rounded capitalize">
-                          {m.role}
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-400 hidden sm:inline">Joined {m.joinedAt}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Pending invitations table */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-3 flex justify-between items-center">
-                  <span>Pending Outbound Invites</span>
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-zinc-900 px-2 py-0.5 rounded">
-                    {(activeWorkspace?.invitations || []).filter((i) => i.status === "pending").length} pending
-                  </span>
-                </h3>
-
-                <div className="flex flex-col gap-2.5">
-                  {(activeWorkspace?.invitations || []).map((inv) => (
-                    <div key={inv.id} className="p-3 bg-slate-50/20 dark:bg-zinc-950/20 rounded-xl border border-slate-100 dark:border-zinc-850 flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-850 dark:text-zinc-100">{inv.email}</span>
-                        <span className="text-[10px] text-slate-400 font-mono mt-0.5">Expires {inv.expiresAt}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-mono uppercase bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded">
-                          {inv.status}
-                        </span>
-                        <span className="text-[10px] text-slate-400">Role: {inv.role}</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {(activeWorkspace?.invitations || []).length === 0 && (
-                    <div className="text-center py-6 text-slate-400 text-xs border border-dashed border-slate-200 dark:border-zinc-800 rounded-xl">
-                      No pending outbound email invites.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-            {/* Right Column (Invite Forms, Share Links) */}
-            <div className="flex flex-col gap-6">
-              
-              {/* Send Invite Form */}
-              {hasPermission("members") ? (
-                <div className={`p-5 rounded-2xl border ${
-                  "bg-bg-secondary border-border-primary"
-                } shadow-xs`}>
-                  <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
-                    <UserPlus size={13} className="text-blue-500" />
-                    <span>Invite Team Node</span>
-                  </h3>
-                  <form onSubmit={handleSendInvite} className="flex flex-col gap-3">
-                    <input
-                      type="email"
-                      required
-                      placeholder="teammate@company.com"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      className={`w-full px-3 py-2 text-xs rounded-xl border outline-none ${
-                        theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-200" : "bg-slate-50 border-slate-200 text-slate-800"
-                      }`}
-                    />
-                    
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] text-slate-400">Workspace Role</label>
-                      <select
-                        value={inviteRole}
-                        onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}
-                        className={`w-full px-2 py-1.5 text-xs rounded-lg border outline-none ${
-                          theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
-                        }`}
-                      >
-                        <option value="Admin">Admin (Full administrative controls)</option>
-                        <option value="Manager">Manager (Billing & User Management)</option>
-                        <option value="Editor">Editor (Read, Edit, Create, Delete)</option>
-                        <option value="Contributor">Contributor (Read, Create, Edit)</option>
-                        <option value="Viewer">Viewer (Read Only)</option>
-                      </select>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5 transition-transform active:scale-[0.98]"
-                    >
-                      <Send size={11} />
-                      <span>Dispatch Invitation</span>
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <div className="p-4 bg-amber-500/5 border border-amber-500/10 text-amber-500 rounded-2xl flex items-start gap-2.5">
-                  <ShieldAlert size={16} className="shrink-0 mt-0.5" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold">Inadequate Authorization</span>
-                    <p className="text-[10px] leading-relaxed mt-0.5 text-slate-400">
-                      Your current workspace role ({activeWorkspace?.role}) does not have permission to invite teammates.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Domain Restriction Policies */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
-                  <Globe size={13} className="text-indigo-500" />
-                  <span>Domain Restrictions</span>
-                </h3>
-                <p className="text-[10px] text-slate-400 leading-relaxed mb-3">
-                  Restrict user self-onboarding to specific enterprise domains.
-                </p>
-                <form onSubmit={handleAddDomain} className="flex gap-2 mb-3">
-                  <input
-                    type="text"
-                    placeholder="e.g. company.com"
-                    value={domainRestriction}
-                    onChange={(e) => setDomainRestriction(e.target.value)}
-                    className={`flex-grow px-2.5 py-1.5 text-xs rounded-lg border outline-none ${
-                      theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-200" : "bg-slate-50 border-slate-200 text-slate-800"
-                    }`}
-                  />
-                  <button type="submit" className="px-3 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-lg cursor-pointer">
-                    Add
-                  </button>
-                </form>
-
-                <div className="flex flex-wrap gap-1">
-                  {allowedDomains.map((dom, idx) => (
-                    <span key={idx} className="text-[9.5px] px-2 py-0.5 bg-indigo-500/10 text-indigo-400 rounded-full font-mono flex items-center gap-1">
-                      <span>{dom}</span>
-                      <X size={9} className="cursor-pointer hover:text-indigo-600" onClick={() => setAllowedDomains(allowedDomains.filter((d) => d !== dom))} />
-                    </span>
-                  ))}
-                  {allowedDomains.length === 0 && (
-                    <span className="text-[10px] text-slate-400">Open domain access (No restriction rules)</span>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-        )}
-
-        {/* VIEW 4: ADMIN CONSOLE */}
-        {activeTab === "admin" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* Left Column (Audit Logs & Storage Policies) */}
-            <div className="md:col-span-2 flex flex-col gap-6">
-              
-              {/* Audit logs table */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-3 flex items-center gap-1.5">
-                  <Shield size={14} className="text-blue-500" />
-                  Enterprise Audit Logs
-                </h3>
-                
-                <div className="flex flex-col gap-2.5">
-                  {(activeWorkspace?.auditLogs || []).map((log) => (
-                    <div key={log.id} className="p-3 bg-slate-50/30 dark:bg-zinc-900/20 border border-slate-100 dark:border-zinc-800 rounded-xl text-[10.5px]">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-slate-800 dark:text-zinc-200">{log.action}</span>
-                        <span className="text-[9.5px] text-slate-400 font-mono">
-                          {new Date(log.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-slate-400 font-mono mt-1">
-                        <span>User: {log.userEmail}</span>
-                        <span>•</span>
-                        <span>IP: {log.ipAddress}</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {(activeWorkspace?.auditLogs || []).length === 0 && (
-                    <div className="text-center py-6 text-slate-400 text-xs border border-dashed border-slate-200 dark:border-zinc-800 rounded-xl">
-                      Audit trails load automatically. No security triggers recorded.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Compliance & Security Panel */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-sm text-slate-900 dark:text-zinc-100 mb-3">
-                  Security Policies & SSO Compliance
-                </h3>
-
-                <div className="flex flex-col gap-4">
-                  {[
-                    { id: "sso", title: "Single Sign-On (SAML/OIDC)", desc: "Enforce employee authentication via enterprise identity provider.", defaultVal: true },
-                    { id: "enc", title: "Strict Content Quarantine", desc: "Isolate Gemini AI content outputs automatically into localized node logs.", defaultVal: false },
-                    { id: "compliance", title: "GDPR/HIPAA Log Redundancy", desc: "Automate raw file export backups directly onto secured local volumes.", defaultVal: true }
-                  ].map((pol) => (
-                    <div key={pol.id} className="flex justify-between items-start gap-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{pol.title}</span>
-                        <span className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">{pol.desc}</span>
-                      </div>
-                      <div className="w-9 h-5 bg-blue-500/20 rounded-full relative p-0.5 cursor-pointer flex items-center">
-                        <div className="w-4 h-4 bg-blue-500 rounded-full translate-x-4"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-
-            {/* Right Column (Integrations, API keys) */}
-            <div className="flex flex-col gap-6">
-              
-              {/* API Key management */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
-                  <Key size={13} className="text-blue-500" />
-                  <span>Aura Developer API Keys</span>
-                </h3>
-
-                <form onSubmit={handleGenerateApiKey} className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Key name (e.g. CI Sync)"
-                    value={apiKeyName}
-                    onChange={(e) => setApiKeyName(e.target.value)}
-                    className={`flex-grow px-2.5 py-1.5 text-xs rounded-lg border outline-none ${
-                      theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-200" : "bg-slate-50 border-slate-200 text-slate-800"
-                    }`}
-                  />
-                  <button type="submit" className="px-3 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg cursor-pointer">
-                    Create
-                  </button>
-                </form>
-
-                <div className="flex flex-col gap-2">
-                  {generatedKeys.map((key) => (
-                    <div key={key.id} className="p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-850 rounded-xl text-[10px] font-mono">
-                      <div className="flex justify-between font-bold text-slate-700 dark:text-zinc-300">
-                        <span>{key.name}</span>
-                        <span className="text-slate-400">{key.createdAt}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-1 bg-slate-200/50 dark:bg-zinc-900 px-1.5 py-1 rounded text-slate-500">
-                        <span className="truncate flex-grow">{key.key}</span>
-                        <Check size={11} className="text-emerald-500 cursor-pointer shrink-0" />
-                      </div>
-                    </div>
-                  ))}
-                  {generatedKeys.length === 0 && (
-                    <p className="text-[10px] text-slate-400 leading-relaxed">No developer API tokens generated yet. Integrate with external workflows easily.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Integrations panel */}
-              <div className={`p-5 rounded-2xl border ${
-                "bg-bg-secondary border-border-primary"
-              } shadow-xs`}>
-                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3 flex items-center gap-1.5">
-                  <Globe size={13} className="text-indigo-500" />
-                  <span>Workspace Integrations</span>
-                </h3>
-                <div className="flex flex-col gap-3">
-                  {(activeWorkspace?.integrations || []).map((int) => (
-                    <div key={int.id} className="p-3 bg-slate-50/30 dark:bg-zinc-950/20 border border-slate-100 dark:border-zinc-850 rounded-xl flex justify-between items-center">
-                      <div className="flex flex-col min-w-0 pr-2">
-                        <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">{int.name}</span>
-                        <span className="text-[9px] text-slate-400 dark:text-zinc-500 leading-normal mt-0.5">{int.desc}</span>
-                      </div>
-                      <button
-                        className={`text-[9.5px] px-2 py-0.5 rounded font-bold font-mono transition-colors shrink-0 cursor-pointer ${
-                          int.status === "Connected"
-                            ? "bg-emerald-500/10 text-emerald-500"
-                            : "bg-slate-200 dark:bg-zinc-800 text-slate-400 hover:text-indigo-500"
-                        }`}
-                      >
-                        {int.status}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-        )}
-
-      </div>
-
-      {/* CONFIRMATION DIALOG MODAL FOR CROSS-WORKSPACE ACTIONS */}
-      {selectedNoteForAction && crossActionType && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setSelectedNoteForAction(null);
-              setCrossActionType(null);
-            }
-          }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none cursor-pointer"
-        >
-          <div className="p-5 rounded-2xl border border-border-primary max-w-sm w-full shadow-2xl bg-bg-secondary text-text-primary cursor-default">
-            <div className="flex items-center gap-2 text-amber-500 mb-3">
-              <AlertTriangle size={18} />
-              <h4 className="font-bold text-sm uppercase tracking-tight">Confirm Isolate Action</h4>
-            </div>
-
-            <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
-              Are you sure you want to <strong>{crossActionType}</strong> the note <strong>"{selectedNoteForAction.title}"</strong>?
-              {crossActionType !== "delete" && " Select the target workspace destination below:"}
-            </p>
-
-            {/* Target Workspace Selector (If not delete) */}
-            {crossActionType !== "delete" && (
-              <div className="flex flex-col gap-1 mt-3">
-                <label className="text-[9px] text-slate-400">Destination Workspace Node</label>
-                <select
-                  value={targetWorkspaceId}
-                  onChange={(e) => setTargetWorkspaceId(e.target.value)}
-                  className={`px-2 py-1.5 text-xs rounded-lg border outline-none ${
-                    theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
-                  }`}
-                >
-                  {workspaces
-                    .filter((w) => w.id !== activeWorkspaceId)
-                    .map((w) => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                </select>
+                )}
+                {hasPermission("settings") && addForm(handleAddDeptSubmit, newDeptName, setNewDeptName, "New department", "e.g. Sales", "Add department")}
               </div>
             )}
 
-            <div className="flex gap-2.5 mt-5 justify-end">
-              <button
-                onClick={() => {
-                  setSelectedNoteForAction(null);
-                  setCrossActionType(null);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
-                  theme === "dark" ? "border-zinc-800 hover:bg-zinc-800" : "border-slate-200 hover:bg-slate-100"
-                } cursor-pointer`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCrossActionExecute}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold text-white cursor-pointer transition-transform active:scale-[0.98] ${
-                  crossActionType === "delete" ? "bg-rose-500 hover:bg-rose-600" : "bg-blue-500 hover:bg-blue-600"
-                }`}
-              >
-                Execute Action
-              </button>
+            {selectedDeptId && !selectedProjectId && (
+              <div>
+                <div className="mb-3">{backLink("Departments", () => setSelectedDeptId(null))}</div>
+                {(deptSel?.projects || []).length === 0 ? (
+                  <InlineEmpty icon={<SlidersHorizontal size={16} />}>No projects in this department.</InlineEmpty>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {(deptSel?.projects || []).map((proj) => treeCard(proj.id, <SlidersHorizontal size={15} />, proj.name, `${proj.folders.length} folders`, () => setSelectedProjectId(proj.id)))}
+                  </div>
+                )}
+                {hasPermission("settings") && addForm(handleAddProjSubmit, newProjName, setNewProjName, "New project", "e.g. CRM system", "Add project")}
+              </div>
+            )}
+
+            {selectedProjectId && !selectedFolderId && (
+              <div>
+                <div className="mb-3">{backLink("Projects", () => setSelectedProjectId(null))}</div>
+                {(projSel?.folders || []).length === 0 ? (
+                  <InlineEmpty icon={<Bookmark size={16} />}>No folders in this project.</InlineEmpty>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {(projSel?.folders || []).map((folder) =>
+                      treeCard(folder, <Bookmark size={15} />, folder, `${workspaceNotes.filter((n) => n.folder === folder && n.projectId === selectedProjectId).length} notes`, () => setSelectedFolderId(folder)),
+                    )}
+                  </div>
+                )}
+                {hasPermission("settings") && addForm(handleAddFolderSubmit, newFolderName, setNewFolderName, "New folder", "e.g. Specs", "Add folder")}
+              </div>
+            )}
+
+            {selectedFolderId && (
+              <div>
+                <div className="mb-3">{backLink("Folders", () => setSelectedFolderId(null))}</div>
+                {workspaceNotes.filter((n) => n.folder === selectedFolderId && n.projectId === selectedProjectId).length === 0 ? (
+                  <InlineEmpty icon={<FileText size={16} />}>No notes in this folder yet. Create or move notes here.</InlineEmpty>
+                ) : (
+                  <ul className="space-y-1">
+                    {workspaceNotes
+                      .filter((n) => n.folder === selectedFolderId && n.projectId === selectedProjectId)
+                      .map((note) => (
+                        <li key={note.id}>
+                          <button onClick={() => setActiveNoteId(note.id)} className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md px-2 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent">
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              <FileText size={14} className="shrink-0 text-fg-muted" aria-hidden />
+                              <span className="truncate text-[13px] text-fg">{note.title}</span>
+                            </span>
+                            <ArrowRight size={12} className="shrink-0 text-fg-subtle" aria-hidden />
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* MEMBERS */}
+        {activeTab === "invites" && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+              <Card title={`Team (${activeWorkspace?.members?.length || 0})`} icon={<Users size={14} />} bodyClassName="p-2">
+                {(activeWorkspace?.members || []).length === 0 ? (
+                  <InlineEmpty icon={<Users size={16} />}>No members yet.</InlineEmpty>
+                ) : (
+                  <ul>
+                    {(activeWorkspace?.members || []).map((m) => (
+                      <li key={m.id} className="flex min-h-12 items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-hover">
+                        <span className="flex min-w-0 items-center gap-3">
+                          <Avatar name={m.name} size={28} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-[13px] font-medium text-fg">{m.name}</span>
+                            <span className="block truncate text-[12px] text-fg-muted">{m.email}</span>
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-3">
+                          <Badge className="capitalize">{m.role}</Badge>
+                          <span className="hidden text-[12px] text-fg-subtle sm:inline">Joined {m.joinedAt}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+
+              <Card title="Pending invites" icon={<Send size={14} />} right={`${(activeWorkspace?.invitations || []).filter((i) => i.status === "pending").length} pending`}>
+                {(activeWorkspace?.invitations || []).length === 0 ? (
+                  <InlineEmpty>No outbound invitations.</InlineEmpty>
+                ) : (
+                  <ul className="space-y-2">
+                    {(activeWorkspace?.invitations || []).map((inv) => (
+                      <li key={inv.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2">
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13px] font-medium text-fg">{inv.email}</span>
+                          <span className="block text-[12px] text-fg-muted">Expires {inv.expiresAt} · {inv.role}</span>
+                        </span>
+                        <Badge tone="warning" className="capitalize">{inv.status}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-6">
+              {hasPermission("members") ? (
+                <Card title="Invite teammate" icon={<UserPlus size={14} />}>
+                  <form onSubmit={handleSendInvite} className="space-y-3">
+                    <Field label="Email">
+                      {(p) => <Input {...p} type="email" required placeholder="teammate@company.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />}
+                    </Field>
+                    <Field label="Role">
+                      {(p) => (
+                        <Select {...p} value={inviteRole} onChange={(e) => setInviteRole(e.target.value as WorkspaceRole)}>
+                          <option value="Admin">Admin (full control)</option>
+                          <option value="Manager">Manager (billing and users)</option>
+                          <option value="Editor">Editor (read, edit, create, delete)</option>
+                          <option value="Contributor">Contributor (read, create, edit)</option>
+                          <option value="Viewer">Viewer (read only)</option>
+                        </Select>
+                      )}
+                    </Field>
+                    <Button type="submit" variant="primary" className="w-full" leadingIcon={<Send size={12} />}>Send invitation</Button>
+                  </form>
+                </Card>
+              ) : (
+                <div role="status" className="flex items-start gap-2.5 rounded-lg border border-line bg-warning-soft p-3">
+                  <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden />
+                  <div>
+                    <p className="text-[13px] font-medium text-fg">Not authorized</p>
+                    <p className="mt-0.5 text-[12px] text-fg-muted">Your role ({activeWorkspace?.role}) cannot invite teammates.</p>
+                  </div>
+                </div>
+              )}
+
+              <Card title="Domain restrictions" icon={<Globe size={14} />}>
+                <p className="mb-3 text-[12px] text-fg-muted">Limit self-onboarding to specific enterprise domains.</p>
+                <form onSubmit={handleAddDomain} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Field label="Domain">{(p) => <Input {...p} placeholder="company.com" value={domainRestriction} onChange={(e) => setDomainRestriction(e.target.value)} />}</Field>
+                  </div>
+                  <Button type="submit" disabled={!domainRestriction.trim()}>Add</Button>
+                </form>
+                <ul className="mt-3 flex flex-wrap gap-1.5">
+                  {allowedDomains.map((dom) => (
+                    <li key={dom}>
+                      <Badge tone="accent" className="h-6 pr-0.5 text-[12px]">
+                        {dom}
+                        <button aria-label={`Remove domain ${dom}`} onClick={() => setAllowedDomains(allowedDomains.filter((d) => d !== dom))} className="flex h-5 w-5 items-center justify-center rounded hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent">
+                          <X size={11} />
+                        </button>
+                      </Badge>
+                    </li>
+                  ))}
+                  {allowedDomains.length === 0 && <li className="text-[12px] text-fg-subtle">No restrictions: any domain can join.</li>}
+                </ul>
+              </Card>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
+        {/* ADMIN */}
+        {activeTab === "admin" && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+              <Card title="Audit log" icon={<Shield size={14} />} bodyClassName="p-2">
+                {(activeWorkspace?.auditLogs || []).length === 0 ? (
+                  <div className="p-2"><InlineEmpty icon={<Shield size={16} />}>No security events recorded yet.</InlineEmpty></div>
+                ) : (
+                  <ul className="divide-y divide-line">
+                    {(activeWorkspace?.auditLogs || []).map((log) => (
+                      <li key={log.id} className="px-2 py-2.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-[13px] font-medium text-fg break-words">{log.action}</p>
+                          <span className="shrink-0 text-[11px] text-fg-subtle">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <p className="mt-0.5 text-[12px] text-fg-muted break-all">{log.userEmail} · {log.ipAddress}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+
+              <Card title="Security policies" icon={<Lock size={14} />}>
+                <ul className="divide-y divide-line">
+                  {[
+                    { id: "sso", title: "Single sign-on (SAML/OIDC)", desc: "Require sign-in through your identity provider." },
+                    { id: "enc", title: "Strict content quarantine", desc: "Keep AI outputs in isolated logs before they reach notes." },
+                    { id: "compliance", title: "GDPR / HIPAA log redundancy", desc: "Back up raw exports to secured local volumes." },
+                  ].map((pol) => (
+                    <li key={pol.id} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-fg">{pol.title}</p>
+                        <p className="mt-0.5 text-[12px] text-fg-muted">{pol.desc}</p>
+                      </div>
+                      <Switch label={pol.title} checked={!!policies[pol.id]} onChange={(v) => setPolicies({ ...policies, [pol.id]: v })} disabled={!hasPermission("settings")} />
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-6">
+              <Card title="API keys" icon={<Key size={14} />}>
+                <form onSubmit={handleGenerateApiKey} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Field label="Key name">{(p) => <Input {...p} required placeholder="e.g. CI sync" value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} />}</Field>
+                  </div>
+                  <Button type="submit" variant="primary">Create</Button>
+                </form>
+                <ul className="mt-3 space-y-2">
+                  {generatedKeys.map((k) => (
+                    <li key={k.id} className="rounded-lg border border-line p-2.5">
+                      <div className="flex justify-between gap-2 text-[12px]">
+                        <span className="font-medium text-fg">{k.name}</span>
+                        <span className="text-fg-subtle">{k.createdAt}</span>
+                      </div>
+                      <p className="mt-1 truncate rounded bg-hover px-1.5 py-1 font-mono text-[11px] text-fg-muted">{k.key}</p>
+                    </li>
+                  ))}
+                  {generatedKeys.length === 0 && <li className="text-[12px] text-fg-muted">No API keys generated yet.</li>}
+                </ul>
+              </Card>
+
+              <Card title="Integrations" icon={<Globe size={14} />}>
+                {(activeWorkspace?.integrations || []).length === 0 ? (
+                  <InlineEmpty>No integrations configured.</InlineEmpty>
+                ) : (
+                  <ul className="space-y-2">
+                    {(activeWorkspace?.integrations || []).map((int) => (
+                      <li key={int.id} className="flex items-center justify-between gap-3 rounded-lg border border-line p-2.5">
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-medium text-fg">{int.name}</span>
+                          <span className="block text-[12px] text-fg-muted">{int.desc}</span>
+                        </span>
+                        <Badge tone={int.status === "Connected" ? "success" : "neutral"}>{int.status}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Confirm cross-workspace action */}
+      <Dialog
+        open={!!(selectedNoteForAction && crossActionType)}
+        onClose={closeCrossAction}
+        size="sm"
+        title={crossActionType === "delete" ? "Move note to trash?" : crossActionType === "move" ? "Move note?" : "Copy note?"}
+        description={selectedNoteForAction ? `"${selectedNoteForAction.title}"` : undefined}
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeCrossAction}>Cancel</Button>
+            <Button
+              variant={crossActionType === "delete" ? "danger" : "primary"}
+              onClick={handleCrossActionExecute}
+              disabled={crossActionType !== "delete" && !targetWorkspaceId}
+            >
+              {crossActionType === "delete" ? "Move to trash" : crossActionType === "move" ? "Move note" : "Copy note"}
+            </Button>
+          </>
+        }
+      >
+        {crossActionType === "delete" ? (
+          <p className="text-[13px] text-fg-muted">The note will be moved to trash.</p>
+        ) : (
+          <Field label="Destination workspace" error={workspaces.filter((w) => w.id !== activeWorkspaceId).length === 0 ? "No other workspace available." : undefined}>
+            {(p) => (
+              <Select {...p} value={targetWorkspaceId} onChange={(e) => setTargetWorkspaceId(e.target.value)}>
+                {workspaces.filter((w) => w.id !== activeWorkspaceId).map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
+      </Dialog>
     </div>
   );
 }

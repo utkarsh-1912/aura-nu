@@ -9,16 +9,31 @@ import OnboardingPage from "./pages/OnboardingPage";
 import WorkspacePage from "./pages/WorkspacePage";
 import OrgHubPage from "./pages/OrgHubPage";
 import AdminConsolePage from "./pages/AdminConsolePage";
+import AgentStudioPage from "./pages/AgentStudioPage";
+import WorkflowStudioPage from "./pages/WorkflowStudioPage";
+import DesignSystemPage from "./pages/DesignSystemPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import NetworkStatusPage from "./pages/NetworkStatusPage";
-import { Note } from "./types";
+import PwaShell from "./features/pwa/PwaShell";
+import { captureLaunchIntent } from "./features/pwa/launch";
+import { clearUserCaches } from "./mobile";
+
+captureLaunchIntent();
 
 function AppContent() {
   const navigate = useNavigate();
   const [user, setUser] = useState<{ email: string; displayName?: string } | null>(null);
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [loading, setLoading] = useState(true);
+
+  // Account switch: drop cached authenticated API responses from the service worker.
+  const prevEmail = React.useRef<string | null>(null);
+  useEffect(() => {
+    const cur = user?.email ?? null;
+    if (prevEmail.current && cur !== prevEmail.current) clearUserCaches();
+    prevEmail.current = cur;
+  }, [user?.email]);
 
   const activeTheme = useMemo<"light" | "dark">(() => {
     if (theme === "system") {
@@ -82,10 +97,20 @@ function AppContent() {
             navigate("/w/ws-aura-core/dashboard");
           }
         } else {
-          setUser(null);
-          const path = window.location.pathname;
-          if (path.startsWith("/w/") || path === "/onboarding") {
-            navigate("/");
+          // Local-only demo/guest session (no Firebase account): keep it across reloads.
+          let guest: { email: string; displayName?: string } | null = null;
+          try {
+            const saved = localStorage.getItem("aura-user");
+            if (saved) guest = JSON.parse(saved);
+          } catch {}
+          if (guest?.email) {
+            setUser(guest);
+          } else {
+            setUser(null);
+            const path = window.location.pathname;
+            if (path.startsWith("/w/") || path === "/onboarding") {
+              navigate("/");
+            }
           }
         }
         setLoading(false);
@@ -127,6 +152,7 @@ function AppContent() {
       }
     }
     setUser(null);
+    clearUserCaches();
     clearSentryUser();
     localStorage.removeItem("aura-user");
     navigate("/");
@@ -157,6 +183,8 @@ function AppContent() {
   }
 
   return (
+    <>
+    <PwaShell />
     <Routes>
       <Route
         path="/"
@@ -243,6 +271,28 @@ function AppContent() {
         }
       />
       <Route
+        path="/org/:orgId/agents"
+        element={
+          <AgentStudioPage
+            userEmail={user?.email || "sandbox@aura.io"}
+            activeTheme={activeTheme}
+          />
+        }
+      />
+      <Route
+        path="/org/:orgId/workflows"
+        element={
+          <WorkflowStudioPage
+            userEmail={user?.email || "sandbox@aura.io"}
+            activeTheme={activeTheme}
+          />
+        }
+      />
+      <Route
+        path="/design"
+        element={<DesignSystemPage theme={activeTheme} onToggleTheme={() => handleSetTheme(activeTheme === "dark" ? "light" : "dark")} />}
+      />
+      <Route
         path="/privacy"
         element={<PrivacyPage theme={activeTheme} />}
       />
@@ -256,6 +306,7 @@ function AppContent() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
 

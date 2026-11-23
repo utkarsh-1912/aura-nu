@@ -1,0 +1,1000 @@
+{
+  "name": "aura-bench",
+  "version": "0.0.1",
+  "note": "All tasks are synthetic and hand-written for harness testing. They are NOT a validated benchmark; do not publish scores from v0.",
+  "tasks": [
+    {
+      "id": "sum-1",
+      "kind": "summarize",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Sprint planning for the Falcon app. The team agreed to ship the login redesign first. Payments refactor slips to next sprint because the sandbox keys are late. QA needs two extra days.",
+      "expectedKeywords": [
+        "login redesign",
+        "payments",
+        "sandbox",
+        "qa"
+      ],
+      "maxWords": 60
+    },
+    {
+      "id": "sum-2",
+      "kind": "summarize",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Garden notes: tomatoes need staking by Friday. The basil bolted in the heat so we replant in September. Compost bin is full and must be turned.",
+      "expectedKeywords": [
+        "tomatoes",
+        "basil",
+        "compost"
+      ],
+      "maxWords": 60
+    },
+    {
+      "id": "sum-3",
+      "kind": "summarize",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Vendor call with Brightline. They quoted 12k for the annual license, down from 15k. Contract renewal is due March 3. Legal must review the data clause.",
+      "expectedKeywords": [
+        "brightline",
+        "license",
+        "march",
+        "legal"
+      ],
+      "maxWords": 60
+    },
+    {
+      "id": "sum-4",
+      "kind": "summarize",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Reading list thoughts: the book on distributed systems explains consensus well. Chapter 7 on replication is dense. I want to implement a toy Raft.",
+      "expectedKeywords": [
+        "distributed",
+        "replication",
+        "raft"
+      ],
+      "maxWords": 60
+    },
+    {
+      "id": "sum-5",
+      "kind": "summarize",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Trip to Lisbon: flight lands 9am Tuesday. Hotel near Alfama booked for 4 nights. Need to buy a rail pass and download offline maps.",
+      "expectedKeywords": [
+        "lisbon",
+        "hotel",
+        "rail pass"
+      ],
+      "maxWords": 60
+    },
+    {
+      "id": "sum-6",
+      "kind": "summarize",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Incident review: the cache cluster ran out of memory at 02:10. Root cause was an unbounded key pattern. Fix is a TTL on all session keys plus an alert at 80 percent memory.",
+      "expectedKeywords": [
+        "cache",
+        "memory",
+        "ttl",
+        "alert"
+      ],
+      "maxWords": 60
+    },
+    {
+      "id": "act-1",
+      "kind": "action-items",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Standup: Priya will update the API docs by Friday. Marco to fix the flaky payment test. Nobody owns the staging reset yet.",
+      "expectedItems": [
+        "Priya update the API docs",
+        "Marco fix the flaky payment test"
+      ]
+    },
+    {
+      "id": "act-2",
+      "kind": "action-items",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Follow ups from kickoff: Dana sends the budget sheet to finance. Lee books the venue. Sam drafts the press note.",
+      "expectedItems": [
+        "Dana send the budget sheet to finance",
+        "Lee book the venue",
+        "Sam draft the press note"
+      ]
+    },
+    {
+      "id": "act-3",
+      "kind": "action-items",
+      "synthetic": true,
+      "note": "[SYNTHETIC] We discussed the roadmap at length. No decisions were made. Everyone felt good.",
+      "expectedItems": []
+    },
+    {
+      "id": "act-4",
+      "kind": "action-items",
+      "synthetic": true,
+      "note": "[SYNTHETIC] TODO: renew the domain, call the plumber about the leak, and email Alex the signed form.",
+      "expectedItems": [
+        "renew the domain",
+        "call the plumber about the leak",
+        "email Alex the signed form"
+      ]
+    },
+    {
+      "id": "act-5",
+      "kind": "action-items",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Retro: Jo will write the postmortem. We should probably improve alerting someday. Kim to schedule the follow-up review.",
+      "expectedItems": [
+        "Jo write the postmortem",
+        "Kim schedule the follow-up review"
+      ]
+    },
+    {
+      "id": "act-6",
+      "kind": "action-items",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Customer call: send them the SLA document, create a ticket for the export bug, and check pricing for 50 seats.",
+      "expectedItems": [
+        "send them the SLA document",
+        "create a ticket for the export bug",
+        "check pricing for 50 seats"
+      ]
+    },
+    {
+      "id": "tag-1",
+      "kind": "tagging",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Quarterly revenue forecast and budget variance for the finance team.",
+      "expectedTags": [
+        "finance",
+        "budget",
+        "forecast"
+      ],
+      "maxTags": 5
+    },
+    {
+      "id": "tag-2",
+      "kind": "tagging",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Packing list and itinerary for the hiking weekend in the mountains.",
+      "expectedTags": [
+        "travel",
+        "hiking",
+        "packing"
+      ],
+      "maxTags": 5
+    },
+    {
+      "id": "tag-3",
+      "kind": "tagging",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Bug triage for the mobile client: crash on login when the token expires.",
+      "expectedTags": [
+        "bug",
+        "mobile",
+        "login"
+      ],
+      "maxTags": 5
+    },
+    {
+      "id": "tag-4",
+      "kind": "tagging",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Recipe: lentil soup with cumin, carrots and lemon. Serves four.",
+      "expectedTags": [
+        "recipe",
+        "soup",
+        "cooking"
+      ],
+      "maxTags": 5
+    },
+    {
+      "id": "tag-5",
+      "kind": "tagging",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Interview feedback for the backend engineer candidate: strong on databases.",
+      "expectedTags": [
+        "interview",
+        "hiring",
+        "backend"
+      ],
+      "maxTags": 5
+    },
+    {
+      "id": "tag-6",
+      "kind": "tagging",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Meeting notes: design review of the new onboarding flow with the product team.",
+      "expectedTags": [
+        "meeting",
+        "design",
+        "onboarding"
+      ],
+      "maxTags": 5
+    },
+    {
+      "id": "fold-1",
+      "kind": "folder-routing",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Invoice reconciliation for October and expense report approvals.",
+      "folders": [
+        "Finance",
+        "Travel",
+        "Engineering",
+        "Personal",
+        "Meetings"
+      ],
+      "expectedFolder": "Finance"
+    },
+    {
+      "id": "fold-2",
+      "kind": "folder-routing",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Boarding pass details and hotel confirmation for the Berlin trip.",
+      "folders": [
+        "Finance",
+        "Travel",
+        "Engineering",
+        "Personal",
+        "Meetings"
+      ],
+      "expectedFolder": "Travel"
+    },
+    {
+      "id": "fold-3",
+      "kind": "folder-routing",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Refactor plan for the auth module and the failing integration tests.",
+      "folders": [
+        "Finance",
+        "Travel",
+        "Engineering",
+        "Personal",
+        "Meetings"
+      ],
+      "expectedFolder": "Engineering"
+    },
+    {
+      "id": "fold-4",
+      "kind": "folder-routing",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Ideas for my birthday dinner and a gift list for mom.",
+      "folders": [
+        "Finance",
+        "Travel",
+        "Engineering",
+        "Personal",
+        "Meetings"
+      ],
+      "expectedFolder": "Personal"
+    },
+    {
+      "id": "fold-5",
+      "kind": "folder-routing",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Weekly sync with the design team: agenda and attendees.",
+      "folders": [
+        "Finance",
+        "Travel",
+        "Engineering",
+        "Personal",
+        "Meetings"
+      ],
+      "expectedFolder": "Meetings"
+    },
+    {
+      "id": "fold-6",
+      "kind": "folder-routing",
+      "synthetic": true,
+      "note": "[SYNTHETIC] Budget approval for cloud spend this quarter.",
+      "folders": [
+        "Finance",
+        "Travel",
+        "Engineering",
+        "Personal",
+        "Meetings"
+      ],
+      "expectedFolder": "Finance"
+    },
+    {
+      "id": "tool-1",
+      "kind": "tool-call",
+      "synthetic": true,
+      "instruction": "[SYNTHETIC] Create a note titled Groceries with the body milk and eggs.",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "title",
+              "body"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "add_tag",
+          "description": "Add a tag to a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "tag"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "move_note",
+          "description": "Move a note to a folder",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "folder"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "expectedTool": "create_note"
+    },
+    {
+      "id": "tool-2",
+      "kind": "tool-call",
+      "synthetic": true,
+      "instruction": "[SYNTHETIC] Tag note n42 with urgent.",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "title",
+              "body"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "add_tag",
+          "description": "Add a tag to a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "tag"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "move_note",
+          "description": "Move a note to a folder",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "folder"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "expectedTool": "add_tag"
+    },
+    {
+      "id": "tool-3",
+      "kind": "tool-call",
+      "synthetic": true,
+      "instruction": "[SYNTHETIC] Move note n7 into the Travel folder.",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "title",
+              "body"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "add_tag",
+          "description": "Add a tag to a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "tag"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "move_note",
+          "description": "Move a note to a folder",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "folder"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "expectedTool": "move_note"
+    },
+    {
+      "id": "tool-4",
+      "kind": "tool-call",
+      "synthetic": true,
+      "instruction": "[SYNTHETIC] Find my notes about the Lisbon trip.",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "title",
+              "body"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "add_tag",
+          "description": "Add a tag to a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "tag"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "move_note",
+          "description": "Move a note to a folder",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "folder"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "expectedTool": "search_notes"
+    },
+    {
+      "id": "tool-5",
+      "kind": "tool-call",
+      "synthetic": true,
+      "instruction": "[SYNTHETIC] Please file note n99 under Finance.",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "title",
+              "body"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "add_tag",
+          "description": "Add a tag to a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "tag"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "move_note",
+          "description": "Move a note to a folder",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "folder"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "expectedTool": "move_note"
+    },
+    {
+      "id": "tool-6",
+      "kind": "tool-call",
+      "synthetic": true,
+      "instruction": "[SYNTHETIC] Make a new note called Ideas with the text try a toy Raft.",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "title",
+              "body"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "add_tag",
+          "description": "Add a tag to a note",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "tag"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "move_note",
+          "description": "Move a note to a folder",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "noteId",
+              "folder"
+            ],
+            "properties": {
+              "noteId": {
+                "type": "string"
+              },
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes",
+          "parameters": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "expectedTool": "create_note"
+    },
+    {
+      "id": "ret-1",
+      "kind": "retrieval",
+      "synthetic": true,
+      "query": "approved marketing budget",
+      "corpus": [
+        {
+          "id": "r-budget",
+          "text": "[SYNTHETIC] # Budget\n\nThe marketing budget for Q3 was approved at forty thousand."
+        },
+        {
+          "id": "r-trip",
+          "text": "[SYNTHETIC] # Trip\n\nPack passport, sunscreen and hiking boots for Lisbon."
+        },
+        {
+          "id": "r-bug",
+          "text": "[SYNTHETIC] # Bug\n\nLogin crashes when the session token expires on mobile."
+        },
+        {
+          "id": "r-recipe",
+          "text": "[SYNTHETIC] # Recipe\n\nLentil soup needs cumin, carrots and lemon juice."
+        },
+        {
+          "id": "r-hiring",
+          "text": "[SYNTHETIC] # Hiring\n\nInterview feedback: the backend candidate is strong on databases."
+        },
+        {
+          "id": "r-garden",
+          "text": "[SYNTHETIC] # Garden\n\nStake the tomatoes and replant basil in September."
+        }
+      ],
+      "relevant": [
+        "r-budget"
+      ],
+      "k": 3
+    },
+    {
+      "id": "ret-2",
+      "kind": "retrieval",
+      "synthetic": true,
+      "query": "what to pack for Lisbon",
+      "corpus": [
+        {
+          "id": "r-budget",
+          "text": "[SYNTHETIC] # Budget\n\nThe marketing budget for Q3 was approved at forty thousand."
+        },
+        {
+          "id": "r-trip",
+          "text": "[SYNTHETIC] # Trip\n\nPack passport, sunscreen and hiking boots for Lisbon."
+        },
+        {
+          "id": "r-bug",
+          "text": "[SYNTHETIC] # Bug\n\nLogin crashes when the session token expires on mobile."
+        },
+        {
+          "id": "r-recipe",
+          "text": "[SYNTHETIC] # Recipe\n\nLentil soup needs cumin, carrots and lemon juice."
+        },
+        {
+          "id": "r-hiring",
+          "text": "[SYNTHETIC] # Hiring\n\nInterview feedback: the backend candidate is strong on databases."
+        },
+        {
+          "id": "r-garden",
+          "text": "[SYNTHETIC] # Garden\n\nStake the tomatoes and replant basil in September."
+        }
+      ],
+      "relevant": [
+        "r-trip"
+      ],
+      "k": 3
+    },
+    {
+      "id": "ret-3",
+      "kind": "retrieval",
+      "synthetic": true,
+      "query": "crash when token expires",
+      "corpus": [
+        {
+          "id": "r-budget",
+          "text": "[SYNTHETIC] # Budget\n\nThe marketing budget for Q3 was approved at forty thousand."
+        },
+        {
+          "id": "r-trip",
+          "text": "[SYNTHETIC] # Trip\n\nPack passport, sunscreen and hiking boots for Lisbon."
+        },
+        {
+          "id": "r-bug",
+          "text": "[SYNTHETIC] # Bug\n\nLogin crashes when the session token expires on mobile."
+        },
+        {
+          "id": "r-recipe",
+          "text": "[SYNTHETIC] # Recipe\n\nLentil soup needs cumin, carrots and lemon juice."
+        },
+        {
+          "id": "r-hiring",
+          "text": "[SYNTHETIC] # Hiring\n\nInterview feedback: the backend candidate is strong on databases."
+        },
+        {
+          "id": "r-garden",
+          "text": "[SYNTHETIC] # Garden\n\nStake the tomatoes and replant basil in September."
+        }
+      ],
+      "relevant": [
+        "r-bug"
+      ],
+      "k": 3
+    },
+    {
+      "id": "ret-4",
+      "kind": "retrieval",
+      "synthetic": true,
+      "query": "how to cook lentil soup",
+      "corpus": [
+        {
+          "id": "r-budget",
+          "text": "[SYNTHETIC] # Budget\n\nThe marketing budget for Q3 was approved at forty thousand."
+        },
+        {
+          "id": "r-trip",
+          "text": "[SYNTHETIC] # Trip\n\nPack passport, sunscreen and hiking boots for Lisbon."
+        },
+        {
+          "id": "r-bug",
+          "text": "[SYNTHETIC] # Bug\n\nLogin crashes when the session token expires on mobile."
+        },
+        {
+          "id": "r-recipe",
+          "text": "[SYNTHETIC] # Recipe\n\nLentil soup needs cumin, carrots and lemon juice."
+        },
+        {
+          "id": "r-hiring",
+          "text": "[SYNTHETIC] # Hiring\n\nInterview feedback: the backend candidate is strong on databases."
+        },
+        {
+          "id": "r-garden",
+          "text": "[SYNTHETIC] # Garden\n\nStake the tomatoes and replant basil in September."
+        }
+      ],
+      "relevant": [
+        "r-recipe"
+      ],
+      "k": 3
+    },
+    {
+      "id": "ret-5",
+      "kind": "retrieval",
+      "synthetic": true,
+      "query": "backend candidate databases",
+      "corpus": [
+        {
+          "id": "r-budget",
+          "text": "[SYNTHETIC] # Budget\n\nThe marketing budget for Q3 was approved at forty thousand."
+        },
+        {
+          "id": "r-trip",
+          "text": "[SYNTHETIC] # Trip\n\nPack passport, sunscreen and hiking boots for Lisbon."
+        },
+        {
+          "id": "r-bug",
+          "text": "[SYNTHETIC] # Bug\n\nLogin crashes when the session token expires on mobile."
+        },
+        {
+          "id": "r-recipe",
+          "text": "[SYNTHETIC] # Recipe\n\nLentil soup needs cumin, carrots and lemon juice."
+        },
+        {
+          "id": "r-hiring",
+          "text": "[SYNTHETIC] # Hiring\n\nInterview feedback: the backend candidate is strong on databases."
+        },
+        {
+          "id": "r-garden",
+          "text": "[SYNTHETIC] # Garden\n\nStake the tomatoes and replant basil in September."
+        }
+      ],
+      "relevant": [
+        "r-hiring"
+      ],
+      "k": 3
+    },
+    {
+      "id": "ret-6",
+      "kind": "retrieval",
+      "synthetic": true,
+      "query": "when to replant basil",
+      "corpus": [
+        {
+          "id": "r-budget",
+          "text": "[SYNTHETIC] # Budget\n\nThe marketing budget for Q3 was approved at forty thousand."
+        },
+        {
+          "id": "r-trip",
+          "text": "[SYNTHETIC] # Trip\n\nPack passport, sunscreen and hiking boots for Lisbon."
+        },
+        {
+          "id": "r-bug",
+          "text": "[SYNTHETIC] # Bug\n\nLogin crashes when the session token expires on mobile."
+        },
+        {
+          "id": "r-recipe",
+          "text": "[SYNTHETIC] # Recipe\n\nLentil soup needs cumin, carrots and lemon juice."
+        },
+        {
+          "id": "r-hiring",
+          "text": "[SYNTHETIC] # Hiring\n\nInterview feedback: the backend candidate is strong on databases."
+        },
+        {
+          "id": "r-garden",
+          "text": "[SYNTHETIC] # Garden\n\nStake the tomatoes and replant basil in September."
+        }
+      ],
+      "relevant": [
+        "r-garden"
+      ],
+      "k": 3
+    }
+  ]
+}

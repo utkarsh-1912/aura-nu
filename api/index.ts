@@ -5,6 +5,25 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import * as Sentry from "@sentry/node";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import crypto from "crypto";
+import http from "node:http";
+import { requireAuth, getUserEmail } from "./auth";
+import { requireOrgRole, ANY_MEMBER, ORG_ADMINS, BILLING } from "./orgAccess";
+import { FileNoteStore, createMongoNoteStore, type NoteStore } from "./noteStore";
+import { createSyncRouter } from "./syncRoutes";
+import { isDestructiveSync } from "../src/core/sync";
+import { createAiRouter } from "./ai/router";
+import { AiRouter } from "../src/ai/router";
+import { OpenAiCompatibleProvider } from "../src/ai/adapters/openaiCompatible";
+import { GeminiProvider } from "../src/ai/adapters/gemini";
+import type { AiPolicy } from "../src/ai/types";
+import { attachCollabServer, type CollabServer } from "./collab/server";
+import { FileDocStore, MongoDocStore } from "./collab/docStore";
+import { createPlatform } from "./platform";
+import { parseDefaultPolicy } from "./aiPolicy";
+import type { OrgDirectory } from "./tenancy";
 
 dotenv.config();
 
@@ -33,15 +52,33 @@ async function connectMongo() {
     });
     console.log("Connected to MongoDB successfully!");
     isMongoActive = true;
+    try {
+      // Indexes the quota store (atomic conditional $inc) and the collab update log depend on.
+      await mongoose.connection.collection("aura_usage").createIndex({ tenant: 1, period: 1 }, { unique: true });
+      await mongoose.connection.collection("aura_collab_updates").createIndex({ room: 1, seq: 1 }, { unique: true });
+    } catch (idxErr) {
+      console.error("Could not create platform indexes:", idxErr);
+    }
   } catch (err) {
     console.warn("MongoDB connection failed, falling back to local JSON file storage:", err);
     isMongoActive = false;
   }
 }
 
-connectMongo();
+const mongoReady = connectMongo();
 
+app.set("trust proxy", 1);
+// CSP is left to the Vite dev server / hosting layer for now; other helmet defaults apply.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "10mb" }));
+
+// Rate limit all API traffic; AI endpoints are costlier so they get a tighter bucket.
+app.use("/api", rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: true, legacyHeaders: false }));
+app.use(["/api/ai", "/api/agents/execute"], rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }));
+
+// Authentication: everything under /api except the health probe requires a verified identity.
+const authMiddleware = requireAuth();
+app.use("/api", (req, res, next) => (req.path === "/health" ? next() : authMiddleware(req, res, next)));
 
 // Initialize Gemini Client
 const geminiApiKey = process.env.GEMINI_API_KEY || "";
@@ -242,7 +279,7 @@ const OrgSchema = new mongoose.Schema({
   createdAt: { type: String, default: () => new Date().toISOString() },
   updatedAt: { type: String, default: () => new Date().toISOString() },
 });
-const MongoOrg = mongoose.models.Org || mongoose.model("Org", OrgSchema);
+const MongoOrg: any = mongoose.models.Org || mongoose.model("Org", OrgSchema);
 
 const DepartmentSchema = new mongoose.Schema({
   id: { type: String, required: true },
@@ -256,7 +293,7 @@ const DepartmentSchema = new mongoose.Schema({
   createdAt: { type: String, default: () => new Date().toISOString() },
 });
 DepartmentSchema.index({ orgId: 1, id: 1 }, { unique: true });
-const MongoDept = mongoose.models.Department || mongoose.model("Department", DepartmentSchema);
+const MongoDept: any = mongoose.models.Department || mongoose.model("Department", DepartmentSchema);
 
 const OrgMemberSchema = new mongoose.Schema({
   id: { type: String, required: true },
@@ -270,7 +307,7 @@ const OrgMemberSchema = new mongoose.Schema({
   isOwner: { type: Boolean, default: false },
 });
 OrgMemberSchema.index({ orgId: 1, email: 1 }, { unique: true });
-const MongoOrgMember = mongoose.models.OrgMember || mongoose.model("OrgMember", OrgMemberSchema);
+const MongoOrgMember: any = mongoose.models.OrgMember || mongoose.model("OrgMember", OrgMemberSchema);
 
 const AuditLogSchema = new mongoose.Schema({
   id: { type: String, required: true },
@@ -286,12 +323,79 @@ const AuditLogSchema = new mongoose.Schema({
   metadata: mongoose.Schema.Types.Mixed,
 });
 AuditLogSchema.index({ orgId: 1, timestamp: -1 });
-const MongoAuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditLogSchema);
+const MongoAuditLog: any = mongoose.models.AuditLog || mongoose.model("AuditLog", AuditLogSchema);
 
 // ── Enterprise API Routes ───────────────────────────────────────────────────
 
+// Org authorisation: callers must be members of :orgId with a sufficient role.
+const orgDeps = {
+  getRole: async (orgId: string, email: string) => {
+    const m: any = await MongoOrgMember.findOne({ orgId, email: email.toLowerCase() }).lean();
+    return m ? m.orgRole : null;
+  },
+  available: () => isMongoActive,
+  production: process.env.NODE_ENV === "production",
+};
+const asMember = requireOrgRole(ANY_MEMBER, orgDeps);
+const asAdmin = requireOrgRole(ORG_ADMINS, orgDeps);
+const asBilling = requireOrgRole(BILLING, orgDeps);
+
+// ── Platform services: shares/collab ACL, SCIM, AI metering + policy (see docs/handoff/wiring-server.md) ──
+const orgDirectory: OrgDirectory = {
+  available: () => isMongoActive,
+  memberships: async (email) => {
+    const ms: any[] = await MongoOrgMember.find({ email }).lean();
+    if (!ms.length) return [];
+    const orgs: any[] = await MongoOrg.find({ id: { $in: ms.map((m) => m.orgId) } }).lean();
+    const tierOf = new Map(orgs.map((o) => [o.id, o.tier]));
+    return ms
+      .filter((m) => tierOf.has(m.orgId))
+      .map((m) => ({ orgId: m.orgId, tier: tierOf.get(m.orgId) === "team" || tierOf.get(m.orgId) === "enterprise" ? tierOf.get(m.orgId) : "personal", role: m.orgRole }));
+  },
+  orgTier: async (orgId) => {
+    const o: any = await MongoOrg.findOne({ id: orgId }).lean();
+    return o ? (o.tier === "team" || o.tier === "enterprise" ? o.tier : "personal") : null;
+  },
+  memberEmails: async (orgId) => ((await MongoOrgMember.find({ orgId }).lean()) as any[]).map((m) => String(m.email).toLowerCase()),
+  removeMember: async (orgId, email) => {
+    // Owners are immutable here, same rule as DELETE /api/org/:orgId/member/:memberId.
+    const r: any = await MongoOrgMember.deleteOne({ orgId, email, isOwner: { $ne: true } });
+    return (r?.deletedCount ?? 0) > 0;
+  },
+};
+const defaultAiPolicy: AiPolicy = parseDefaultPolicy(process.env.AURA_AI_POLICY);
+const platform = createPlatform({
+  dataDir: path.join(process.env.AURA_DATA_DIR || path.join(process.cwd(), ".aura-data"), "platform"),
+  mongo: (name) => (isMongoActive ? (mongoose.connection.collection(`aura_${name}`) as any) : null),
+  production: process.env.NODE_ENV === "production",
+  orgs: orgDirectory,
+  shareSecret: process.env.SHARE_LINK_SECRET,
+  defaultAiPolicy,
+  scimBaseUrl: process.env.SCIM_BASE_URL || undefined,
+  audit: (orgId, email, action, resource, meta) => {
+    if (isMongoActive && orgId) {
+      MongoAuditLog.create({ id: `audit-${crypto.randomUUID()}`, orgId, userEmail: email, action, resource, metadata: meta }).catch(() => undefined);
+    } else {
+      console.log(JSON.stringify({ audit: action, resource, orgId, by: email }));
+    }
+  },
+});
+if (!process.env.SHARE_LINK_SECRET || process.env.SHARE_LINK_SECRET.length < 16) {
+  console.warn("SHARE_LINK_SECRET is unset or shorter than 16 chars: share-link endpoints are disabled (user-to-user shares still work).");
+}
+
+// SCIM has its own per-org bearer auth, so it lives OUTSIDE the /api auth middleware.
+app.use("/scim", rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
+platform.mountPublic(app);
+
+// Quota gate for every AI entry point (new router, legacy action, agent planner). Must precede those routes.
+app.use(["/api/ai", "/api/agents/execute"], platform.aiGuard);
+
+// Shares, usage, AI policy and SCIM token administration (all behind the /api auth middleware).
+platform.mountAuthed(app, { asMember, asAdmin });
+
 // GET /api/org/:orgId — fetch org info
-app.get("/api/org/:orgId", async (req, res) => {
+app.get("/api/org/:orgId", asMember, async (req, res) => {
   const { orgId } = req.params;
   try {
     if (isMongoActive) {
@@ -308,15 +412,23 @@ app.get("/api/org/:orgId", async (req, res) => {
 
 // POST /api/org — create org
 app.post("/api/org", async (req, res) => {
-  const { name, domain, tier, ownerEmail } = req.body;
-  const id = `org-${Date.now()}`;
+  const { name, domain, tier } = req.body;
+  const ownerEmail = getUserEmail(req); // identity comes from the token, never the body
+  if (typeof name !== "string" || !name.trim() || name.length > 120) {
+    return res.status(400).json({ error: "Valid org name required" });
+  }
+  const id = `org-${crypto.randomUUID()}`;
+  const safeTier = ["personal", "team"].includes(tier) ? tier : "team"; // enterprise is granted via billing, not self-service
   try {
     if (isMongoActive) {
-      const org = new MongoOrg({ id, name, domain, tier: tier || "team", ownerId: ownerEmail, ownerEmail });
+      const org = new MongoOrg({ id, name: name.trim(), domain, tier: safeTier, ownerId: ownerEmail, ownerEmail });
       await org.save();
+      await new MongoOrgMember({
+        id: `member-${crypto.randomUUID()}`, orgId: id, email: ownerEmail, orgRole: "OrgOwner", isOwner: true,
+      }).save();
       return res.status(201).json({ org: org.toObject() });
     }
-    return res.status(201).json({ org: { id, name, domain, tier, ownerEmail } });
+    return res.status(201).json({ org: { id, name: name.trim(), domain, tier: safeTier, ownerEmail } });
   } catch (err) {
     Sentry.captureException(err);
     return res.status(500).json({ error: "Failed to create org" });
@@ -324,7 +436,7 @@ app.post("/api/org", async (req, res) => {
 });
 
 // GET /api/org/:orgId/members
-app.get("/api/org/:orgId/members", async (req, res) => {
+app.get("/api/org/:orgId/members", asMember, async (req, res) => {
   const { orgId } = req.params;
   try {
     if (isMongoActive) {
@@ -339,15 +451,20 @@ app.get("/api/org/:orgId/members", async (req, res) => {
 });
 
 // POST /api/org/:orgId/invite
-app.post("/api/org/:orgId/invite", async (req, res) => {
+app.post("/api/org/:orgId/invite", asAdmin, async (req, res) => {
   const { orgId } = req.params;
   const { emails, role } = req.body;
+  if (!Array.isArray(emails) || emails.length === 0 || emails.length > 100 || !emails.every((e: unknown) => typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))) {
+    return res.status(400).json({ error: "emails must be a list of 1-100 valid addresses" });
+  }
+  // Admins may not mint owners.
+  const inviteRole = ["OrgAdmin", "BillingAdmin", "DeptLead", "Member"].includes(role) ? role : "Member";
   try {
     if (isMongoActive) {
       const created = await Promise.all(
         (emails as string[]).map(async (email) => {
           const id = `member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-          const m = new MongoOrgMember({ id, orgId, email, orgRole: role || "Member" });
+          const m = new MongoOrgMember({ id, orgId, email: email.toLowerCase(), orgRole: inviteRole });
           await m.save();
           return m.toObject();
         })
@@ -362,12 +479,16 @@ app.post("/api/org/:orgId/invite", async (req, res) => {
 });
 
 // PATCH /api/org/:orgId/member/:memberId/role
-app.patch("/api/org/:orgId/member/:memberId/role", async (req, res) => {
+app.patch("/api/org/:orgId/member/:memberId/role", asAdmin, async (req, res) => {
   const { orgId, memberId } = req.params;
   const { role } = req.body;
+  if (!["OrgAdmin", "BillingAdmin", "DeptLead", "Member"].includes(role)) {
+    return res.status(400).json({ error: "Invalid role" });
+  }
   try {
     if (isMongoActive) {
-      await MongoOrgMember.updateOne({ orgId, id: memberId }, { $set: { orgRole: role } });
+      // Owners are immutable here; ownership transfer needs its own flow.
+      await MongoOrgMember.updateOne({ orgId, id: memberId, isOwner: { $ne: true } }, { $set: { orgRole: role } });
     }
     return res.json({ success: true, memberId, role });
   } catch (err) {
@@ -377,11 +498,11 @@ app.patch("/api/org/:orgId/member/:memberId/role", async (req, res) => {
 });
 
 // DELETE /api/org/:orgId/member/:memberId
-app.delete("/api/org/:orgId/member/:memberId", async (req, res) => {
+app.delete("/api/org/:orgId/member/:memberId", asAdmin, async (req, res) => {
   const { orgId, memberId } = req.params;
   try {
     if (isMongoActive) {
-      await MongoOrgMember.deleteOne({ orgId, id: memberId });
+      await MongoOrgMember.deleteOne({ orgId, id: memberId, isOwner: { $ne: true } });
     }
     return res.json({ success: true });
   } catch (err) {
@@ -391,7 +512,7 @@ app.delete("/api/org/:orgId/member/:memberId", async (req, res) => {
 });
 
 // GET /api/org/:orgId/departments
-app.get("/api/org/:orgId/departments", async (req, res) => {
+app.get("/api/org/:orgId/departments", asMember, async (req, res) => {
   const { orgId } = req.params;
   try {
     if (isMongoActive) {
@@ -406,7 +527,7 @@ app.get("/api/org/:orgId/departments", async (req, res) => {
 });
 
 // POST /api/org/:orgId/departments
-app.post("/api/org/:orgId/departments", async (req, res) => {
+app.post("/api/org/:orgId/departments", asAdmin, async (req, res) => {
   const { orgId } = req.params;
   const { name, icon, color, leadEmail } = req.body;
   const id = `dept-${Date.now()}`;
@@ -424,7 +545,7 @@ app.post("/api/org/:orgId/departments", async (req, res) => {
 });
 
 // GET /api/org/:orgId/audit-logs
-app.get("/api/org/:orgId/audit-logs", async (req, res) => {
+app.get("/api/org/:orgId/audit-logs", asAdmin, async (req, res) => {
   const { orgId } = req.params;
   const page = parseInt((req.query.page as string) || "1");
   const limit = parseInt((req.query.limit as string) || "50");
@@ -449,7 +570,7 @@ app.get("/api/org/:orgId/audit-logs", async (req, res) => {
 });
 
 // GET /api/org/:orgId/billing
-app.get("/api/org/:orgId/billing", async (req, res) => {
+app.get("/api/org/:orgId/billing", asBilling, async (req, res) => {
   const { orgId } = req.params;
   try {
     if (isMongoActive) {
@@ -477,9 +598,20 @@ app.get("/api/org/:orgId/billing", async (req, res) => {
 });
 
 // ── Core REST APIs ──────────────────────────────────────────────────────────
-// REST APIs
+// Per-note sync API (v2). Mongo when connected, otherwise atomic per-user files under AURA_DATA_DIR.
+const fileNoteStore = new FileNoteStore(process.env.AURA_DATA_DIR || path.join(process.cwd(), ".aura-data"));
+const mongoNoteStore = createMongoNoteStore(mongoose);
+const v2Store: NoteStore = {
+  changes: (...a) => (isMongoActive ? mongoNoteStore : fileNoteStore).changes(...a),
+  put: (...a) => (isMongoActive ? mongoNoteStore : fileNoteStore).put(...a),
+  remove: (...a) => (isMongoActive ? mongoNoteStore : fileNoteStore).remove(...a),
+};
+// withOwnerRegistration records a note's owner on first PUT (the root of share/collab authorisation).
+app.use("/api/v2", createSyncRouter(platform.withOwnerRegistration(v2Store)));
+
+// REST APIs (legacy whole-set sync, kept until clients move to /api/v2)
 app.get("/api/notes", async (req, res) => {
-  const email = (req.headers["x-user-email"] as string) || "sandbox@aura.io";
+  const email = getUserEmail(req);
   
   if (isMongoActive) {
     try {
@@ -495,10 +627,20 @@ app.get("/api/notes", async (req, res) => {
 });
 
 app.post("/api/notes", async (req, res) => {
-  const email = (req.headers["x-user-email"] as string) || "sandbox@aura.io";
+  const email = getUserEmail(req);
   const { notes } = req.body;
   if (!Array.isArray(notes)) {
     return res.status(400).json({ error: "Invalid notes data" });
+  }
+
+  // Safety net: this endpoint replaces the whole set, so refuse wholesale deletions.
+  // The per-note v2 API (/api/v2) handles deletes explicitly via tombstones.
+  const incomingNoteIds = notes.map((n: any) => n?.id).filter((i: unknown): i is string => typeof i === "string");
+  const existingNoteIds: string[] = isMongoActive
+    ? await MongoNote.find({ userEmail: email }).distinct("id").catch(() => [])
+    : loadNotes(email).map((n: any) => n.id);
+  if (isDestructiveSync(existingNoteIds, incomingNoteIds)) {
+    return res.status(409).json({ error: "Refusing destructive sync: payload would delete most or all stored notes." });
   }
 
   if (isMongoActive) {
@@ -525,7 +667,7 @@ app.post("/api/notes", async (req, res) => {
 });
 
 app.get("/api/folders", async (req, res) => {
-  const email = (req.headers["x-user-email"] as string) || "sandbox@aura.io";
+  const email = getUserEmail(req);
 
   if (isMongoActive) {
     try {
@@ -541,10 +683,18 @@ app.get("/api/folders", async (req, res) => {
 });
 
 app.post("/api/folders", async (req, res) => {
-  const email = (req.headers["x-user-email"] as string) || "sandbox@aura.io";
+  const email = getUserEmail(req);
   const { folders } = req.body;
   if (!Array.isArray(folders)) {
     return res.status(400).json({ error: "Invalid folders data" });
+  }
+
+  const incomingFolderIds = folders.map((f: any) => f?.id).filter((i: unknown): i is string => typeof i === "string");
+  const existingFolderIds: string[] = isMongoActive
+    ? await MongoFolder.find({ userEmail: email }).distinct("id").catch(() => [])
+    : loadFolders(email).map((f: any) => f.id);
+  if (isDestructiveSync(existingFolderIds, incomingFolderIds)) {
+    return res.status(409).json({ error: "Refusing destructive sync: payload would delete most or all stored folders." });
   }
 
   if (isMongoActive) {
@@ -743,8 +893,7 @@ app.post("/api/ai/action", async (req, res) => {
   }
 
   if (!activeAi) {
-    console.log(`Gemini API key is not set. Executing fallback local intelligence for action: ${action}`);
-    return res.json({ result: invokeFallback() });
+    return res.status(503).json({ error: "No AI provider is configured on this server.", code: "AI_UNAVAILABLE" });
   }
 
   if (!content && action !== "chat") {
@@ -811,12 +960,125 @@ app.post("/api/ai/action", async (req, res) => {
       },
     });
 
+    res.locals.meterTokens?.(response.usageMetadata?.promptTokenCount ?? 0, response.usageMetadata?.candidatesTokenCount ?? 0);
     res.json({ result: response.text });
   } catch (error: any) {
-    console.error("Gemini AI API Error, utilizing local backup suggestions:", error);
-    res.json({ result: invokeFallback() });
+    console.error("Gemini AI API Error:", error);
+    res.status(502).json({ error: "The AI provider request failed.", code: "AI_UPSTREAM_ERROR" });
   }
 });
+
+// ── Enterprise Agentic Orchestrator Endpoints ──────────────────────────────
+const AGENT_RUNS_FILE = path.join(process.cwd(), "agent-runs-db.json");
+
+function loadServerAgentRuns(): any[] {
+  try {
+    if (fs.existsSync(AGENT_RUNS_FILE)) {
+      return JSON.parse(fs.readFileSync(AGENT_RUNS_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.error("Failed to read agent-runs-db.json:", e);
+  }
+  return [];
+}
+
+function saveServerAgentRun(run: any) {
+  try {
+    const existing = loadServerAgentRuns();
+    const idx = existing.findIndex((r: any) => r.id === run.id);
+    if (idx >= 0) existing[idx] = run;
+    else existing.unshift(run);
+    fs.writeFileSync(AGENT_RUNS_FILE, JSON.stringify(existing.slice(0, 100), null, 2), "utf-8");
+  } catch (e) {
+    console.error("Failed to write agent-runs-db.json:", e);
+  }
+}
+
+// GET /api/agents/runs — list enterprise agent execution runs
+app.get("/api/agents/runs", (req, res) => {
+  const orgId = req.query.orgId as string | undefined;
+  const runs = loadServerAgentRuns();
+  const filtered = orgId ? runs.filter((r: any) => !r.orgId || r.orgId === orgId) : runs;
+  res.json({ runs: filtered });
+});
+
+// POST /api/agents/runs — persist an agent run audit record
+app.post("/api/agents/runs", (req, res) => {
+  const { run } = req.body;
+  if (!run || !run.id) {
+    return res.status(400).json({ error: "Valid agent run payload required" });
+  }
+  saveServerAgentRun(run);
+  res.json({ success: true, run });
+});
+
+// POST /api/agents/execute — Gemini-powered multi-step agentic planner
+app.post("/api/agents/execute", async (req, res) => {
+  const { agent, goal, activeNote, workspaceNotesSample, userApiKey } = req.body;
+
+  let activeAi = ai;
+  if (userApiKey && typeof userApiKey === "string" && userApiKey.trim()) {
+    try {
+      activeAi = new GoogleGenAI({ apiKey: userApiKey.trim() });
+    } catch {
+      activeAi = ai;
+    }
+  }
+
+  if (!activeAi) {
+    return res.json({ fallback: true, reason: "No Gemini API key configured; using client-side deterministic agent planner." });
+  }
+
+  try {
+    const systemPrompt = `${agent?.systemPrompt || "You are an enterprise autonomous agent in Aura Next."}\n\nYou have access to these tools: ${(agent?.allowedTools || ["search_workspace", "create_note", "update_note", "organize_folders_tags", "extract_tasks_and_reminders", "compliance_dlp_scan"]).join(", ")}.\nReturn a JSON object with:\n- "thoughts": array of strings (your step-by-step reasoning)\n- "toolCalls": array of objects with { "toolName": string, "rationale": string, "arguments": object }\n- "finalSummary": markdown string summarizing the findings and actions taken.`;
+
+    const contextSummary = (workspaceNotesSample || [])
+      .slice(0, 8)
+      .map((n: any) => `- [${n.id}] "${n.title}" (Folder: ${n.folder}, Tags: ${(n.tags || []).join(", ")}): ${(n.content || "").slice(0, 220)}`)
+      .join("\n");
+
+    const prompt = `User Goal: "${goal || "Execute primary agent objective"}"\n\nActive Note: ${activeNote ? `[${activeNote.id}] "${activeNote.title}"\n${(activeNote.content || "").slice(0, 800)}` : "None"}\n\nWorkspace Notes Context:\n${contextSummary}`;
+
+    const response = await activeAi.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.2,
+        responseMimeType: "application/json",
+      },
+    });
+
+    res.locals.meterTokens?.(response.usageMetadata?.promptTokenCount ?? 0, response.usageMetadata?.candidatesTokenCount ?? 0);
+    const parsed = JSON.parse(response.text || "{}");
+    res.json({ fallback: false, plan: parsed });
+  } catch (err: any) {
+    console.warn("Agent Gemini planner fallback:", err?.message || err);
+    res.json({ fallback: true, reason: "Gemini call failed; falling back to client-side deterministic execution." });
+  }
+});
+
+// ── Provider-agnostic AI API (/api/ai/chat|complete|embed|models) ───────────
+// Providers come from env; with none configured every call fails honestly with AI_UNAVAILABLE.
+// The workspace policy is decided here on the server (env default for now), never by the client.
+const aiProviders: any[] = [];
+if (process.env.AURA_LLM_BASE_URL) {
+  aiProviders.push(new OpenAiCompatibleProvider({
+    id: "self-host",
+    baseUrl: process.env.AURA_LLM_BASE_URL,
+    apiKey: process.env.AURA_LLM_API_KEY,
+    locality: "self-host",
+    defaultModel: process.env.AURA_LLM_MODEL,
+    defaultEmbeddingModel: process.env.AURA_EMBED_MODEL,
+  }));
+}
+if (process.env.GEMINI_API_KEY) aiProviders.push(new GeminiProvider({ apiKey: process.env.GEMINI_API_KEY }));
+app.use("/api/ai", createAiRouter({
+  router: new AiRouter({ providers: aiProviders }),
+  // Strictest of AURA_AI_POLICY and the policies admins set per org (PUT /api/org/:orgId/ai-policy). Client input is ignored.
+  resolvePolicy: (email) => platform.resolvePolicy(email),
+  meter: platform.aiMeter, // token accounting; quota itself is enforced by platform.aiGuard
+}));
 
 // Setup Vite Dev Server / Static Asset Serving
 async function startServer() {
@@ -835,9 +1097,48 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = http.createServer(app);
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
+
+  // Realtime collaboration needs a long-lived process (WebSockets); it is never attached on Vercel.
+  await mongoReady; // choose the doc store once, after we know whether MongoDB is up
+  let collab: CollabServer | null = null;
+  try {
+    const origins = (process.env.COLLAB_ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+    if (!origins.length && process.env.NODE_ENV === "production") {
+      console.warn("COLLAB_ALLOWED_ORIGINS is not set: any Origin may open a collab socket (auth is still required).");
+    }
+    collab = attachCollabServer(server, {
+      store: isMongoActive
+        ? new MongoDocStore(mongoose.connection.collection("aura_collab_updates") as any)
+        : new FileDocStore(process.env.COLLAB_DATA_DIR || path.join(process.cwd(), ".collab-data")),
+      access: platform.accessChecker,
+      allowedOrigins: origins.length ? origins : undefined,
+      log: (event, meta) => console.warn("[collab]", event, meta ?? ""),
+    });
+  } catch (err) {
+    console.error("Collaboration server failed to start:", err);
+  }
+
+  let stopping = false;
+  const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`${signal} received: shutting down`);
+    const force = setTimeout(() => process.exit(1), 10_000);
+    force.unref();
+    try {
+      await collab?.close(); // flushes Yjs logs before sockets drop
+    } catch (err) {
+      console.error("collab close failed:", err);
+    }
+    server.close(() => process.exit(0));
+    (server as any).closeAllConnections?.();
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 if (!process.env.VERCEL) {

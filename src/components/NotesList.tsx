@@ -4,9 +4,7 @@ import {
   Pin,
   Share2,
   Star,
-  Calendar,
-  Clock,
-  Filter,
+  ArrowUpDown,
   Plus,
   FileText,
   Trash2,
@@ -14,13 +12,18 @@ import {
   FileEdit,
   Globe,
   FolderInput,
-  Check,
-  CheckSquare,
-  Square,
+  ListChecks,
   RotateCcw,
-  X
+  Lock,
+  X,
 } from "lucide-react";
 import { Note, Folder } from "../types";
+import { Badge, Button, EmptyState, IconButton, Input, Kbd, Menu, Segmented, Skeleton, cn } from "../ui";
+import type { NoteIndexes } from "../features/indexes/useNoteIndexes";
+import { searchNotes } from "../features/search/searchNotes";
+import SnippetText from "../features/search/SnippetText";
+import { SMART_PREFIX, type SmartFolder } from "../features/smartFolders/store";
+import { evaluateSmartFolder } from "../core/smartFolders";
 
 interface NotesListProps {
   notes: Note[];
@@ -43,12 +46,19 @@ interface NotesListProps {
   onTogglePinNote?: (id: string) => void;
   onToggleFavoriteNote?: (id: string) => void;
   onDeleteNote?: (id: string) => void;
+  /** Optional: show skeleton rows while notes are loading. */
+  loading?: boolean;
+  /** Search + link indexes (features/indexes). When ready, the search box uses the SearchIndex. */
+  indexes?: NoteIndexes;
+  /** Smart folders; the active folder id "smart:<id>" selects one. */
+  smartFolders?: SmartFolder[];
+  activeWorkspaceId?: string;
 }
 
-// Strip markdown syntax to generate a beautiful plain-text preview excerpt
-function getPlainTextExcerpt(markdown: string, maxLength = 75): string {
+// Strip markdown syntax to generate a plain-text preview excerpt
+function getPlainTextExcerpt(markdown: string, maxLength = 110): string {
   if (!markdown) return "No content yet";
-  
+
   let text = markdown
     .replace(/#+\s+/g, "") // remove headers
     .replace(/\[[x ]\]/g, "") // remove task checkboxes
@@ -70,7 +80,7 @@ function getPlainTextExcerpt(markdown: string, maxLength = 75): string {
 function formatNoteDate(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
-  
+
   const isSameDay = date.toDateString() === now.toDateString();
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
@@ -106,13 +116,19 @@ export default function NotesList({
   onTogglePinNote,
   onToggleFavoriteNote,
   onDeleteNote,
+  loading = false,
+  indexes,
+  smartFolders,
+  activeWorkspaceId,
 }: NotesListProps) {
+  void theme; // theme is token-driven now; prop kept for API compatibility
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<"updatedAt" | "title">("updatedAt");
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
   const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
   const notesListRef = useRef<HTMLDivElement>(null);
   const bulkMoveMenuRef = useRef<HTMLDivElement>(null);
 
@@ -155,23 +171,55 @@ export default function NotesList({
     if (["All Notes", "Pinned", "Favorites", "Shared", "Drafts", "Published", "Archive", "Trash"].includes(activeFolder)) {
       return activeFolder;
     }
+    if (activeFolder.startsWith(SMART_PREFIX)) {
+      return smartFolders?.find((f) => SMART_PREFIX + f.id === activeFolder)?.name ?? "Smart folder";
+    }
     const found = folders.find(f => f.id === activeFolder);
     return found ? found.name : activeFolder;
-  }, [activeFolder, folders]);
+  }, [activeFolder, folders, smartFolders]);
+
+  // Search: use the SearchIndex once it is fully built; until then fall back to the plain substring filter.
+  const deferredQuery = React.useDeferredValue(searchQuery);
+  const indexReady = !!indexes && indexes.status !== "building";
+  const searchResult = useMemo(() => {
+    if (!indexReady || !indexes || !deferredQuery.trim()) return null;
+    void indexes.version;
+    try { return searchNotes(indexes.search, deferredQuery, { workspaceId: activeWorkspaceId, includeTrashed: true }); } catch { return null; }
+  }, [indexReady, indexes, indexes?.version, deferredQuery, activeWorkspaceId]);
+
+  const smartIds = useMemo(() => {
+    if (!activeFolder.startsWith(SMART_PREFIX)) return null;
+    const sf = smartFolders?.find((f) => SMART_PREFIX + f.id === activeFolder);
+    if (!sf) return new Set<string>();
+    return new Set(evaluateSmartFolder(sf.rule, notes).map((n) => n.id));
+  }, [activeFolder, smartFolders, notes]);
+
+  // "/" focuses the notes search (when not typing somewhere).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      const el = document.getElementById("notes-search-input") as HTMLInputElement | null;
+      if (!el) return;
+      e.preventDefault();
+      el.focus();
+      el.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Step 1: Filter notes by Folder, Tag, and search query
   const filteredNotes = useMemo(() => {
     return notes.filter((note) => {
-      // 1. Filter by Base Status Constraint
       if (activeFolder === "Trash") {
         if (!note.isTrashed) return false;
       } else if (activeFolder === "Archive") {
         if (!note.isArchived || note.isTrashed) return false;
       } else {
-        // Standard views don't show trashed or archived notes
         if (note.isTrashed || note.isArchived) return false;
 
-        // Apply tab specific filters
         if (activeFolder === "Pinned") {
           if (!note.isPinned) return false;
         } else if (activeFolder === "Shared") {
@@ -184,17 +232,18 @@ export default function NotesList({
         } else if (activeFolder === "Published") {
           const isPublished = note.status === "Published" || note.tags.includes("Published");
           if (!isPublished) return false;
+        } else if (smartIds) {
+          if (!smartIds.has(note.id)) return false;
         } else if (activeFolder !== "All Notes" && activeFolder !== "Dashboard") {
           if (note.folder !== activeFolder) return false;
         }
       }
 
-      // Filter by tag if selected
       if (activeTag && !note.tags.includes(activeTag)) {
         return false;
       }
 
-      // Search Query filter
+      if (searchResult) return searchResult.hits.has(note.id);
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const titleMatch = note.title.toLowerCase().includes(query);
@@ -205,20 +254,25 @@ export default function NotesList({
 
       return true;
     });
-  }, [notes, activeFolder, activeTag, searchQuery]);
+  }, [notes, activeFolder, activeTag, searchQuery, searchResult, smartIds]);
 
   // Step 2: Sort notes
   const sortedNotes = useMemo(() => {
+    if (searchResult) {
+      const rank = new Map(searchResult.order.map((id, i) => [id, i]));
+      return [...filteredNotes].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    }
     return [...filteredNotes].sort((a, b) => {
       if (sortField === "title") {
         return a.title.localeCompare(b.title);
       }
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  }, [filteredNotes, sortField]);
+  }, [filteredNotes, sortField, searchResult]);
 
-  // Step 3: Categorize notes into Date Groups
+  // Step 3: Categorize notes into groups (Pinned first, then by date)
   const groupedNotes = useMemo(() => {
+    const pinned: Note[] = [];
     const today: Note[] = [];
     const yesterday: Note[] = [];
     const last7Days: Note[] = [];
@@ -231,7 +285,9 @@ export default function NotesList({
 
     sortedNotes.forEach((note) => {
       const noteTime = new Date(note.updatedAt).getTime();
-      if (noteTime >= todayStart) {
+      if (note.isPinned && activeFolder !== "Trash" && activeFolder !== "Archive") {
+        pinned.push(note);
+      } else if (noteTime >= todayStart) {
         today.push(note);
       } else if (noteTime >= yesterdayStart) {
         yesterday.push(note);
@@ -242,8 +298,8 @@ export default function NotesList({
       }
     });
 
-    return { today, yesterday, last7Days, older };
-  }, [sortedNotes]);
+    return { pinned, today, yesterday, last7Days, older };
+  }, [sortedNotes, activeFolder]);
 
   // Keyboard shortcut Ctrl/Cmd + A to select all
   useEffect(() => {
@@ -308,182 +364,136 @@ export default function NotesList({
     if (selectedNoteIds.includes(note.id)) {
       notesToDrag = selectedNoteIds;
     } else {
-      // Dragging a note not currently selected should select it
       setSelectedNoteIds([note.id]);
       notesToDrag = [note.id];
     }
-    
+
     e.dataTransfer.setData("text/plain", JSON.stringify(notesToDrag));
     e.dataTransfer.setData("type", "notes");
     e.dataTransfer.effectAllowed = "move";
 
-    // Create custom drag preview showing count of dragged items
+    // Custom drag preview showing count of dragged items
     const preview = document.createElement("div");
-    preview.className = "fixed pointer-events-none px-3 py-2 bg-blue-600 text-white rounded-xl font-sans text-xs font-semibold shadow-2xl flex items-center gap-2 z-50";
-    preview.innerHTML = `📄 ${notesToDrag.length} ${notesToDrag.length === 1 ? 'Note' : 'Notes'}`;
+    preview.className = "fixed pointer-events-none px-3 py-2 bg-accent text-accent-fg rounded-lg text-xs font-medium shadow-pop flex items-center gap-2 z-50";
+    preview.textContent = `${notesToDrag.length} ${notesToDrag.length === 1 ? "note" : "notes"}`;
     document.body.appendChild(preview);
     e.dataTransfer.setDragImage(preview, 0, 0);
     setTimeout(() => document.body.removeChild(preview), 0);
+  };
+
+  const multiMode = isMultiSelectMode || selectedNoteIds.length > 1;
+
+  const toggleSelected = (id: string) => {
+    setSelectedNoteIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setLastClickedId(id);
   };
 
   const renderNoteCard = (note: Note) => {
     const isActive = note.id === activeNoteId;
     const isSelected = selectedNoteIds.includes(note.id);
     const excerpt = getPlainTextExcerpt(note.content);
+    const compact = density === "compact";
+    const status = note.isTrashed ? "Trashed" : note.isArchived ? "Archived" : note.status || "";
+    const statusTone = note.isTrashed ? "danger" : note.status === "Published" ? "success" : note.status === "In Review" ? "warning" : "neutral";
+    const highlighted = isActive || isSelected;
 
     return (
       <div
         id={`note-card-${note.id}`}
         key={note.id}
+        role="option"
+        aria-selected={highlighted}
+        tabIndex={0}
         onClick={(e) => handleNoteClick(e, note)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedNoteIds([note.id]);
+            setLastClickedId(note.id);
+            setActiveNoteId(note.id);
+          }
+        }}
         draggable
         onDragStart={(e) => handleDragStart(e, note)}
-        className={`py-2.5 px-3 rounded-xl mx-1.5 mb-1.5 cursor-pointer select-none group relative border note-card-hover ${
-          isActive
-            ? "bg-bg-secondary border-border-primary shadow-sm text-text-primary font-semibold"
-            : isSelected
-            ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-semibold"
-            : "bg-transparent border-transparent hover:bg-bg-secondary/80 hover:border-border-primary text-text-secondary hover:text-text-primary"
-        }`}
+        className={cn(
+          "group relative mx-1.5 mb-px flex cursor-pointer select-none gap-2 rounded-md px-3 outline-none transition-colors duration-150",
+          "focus-visible:ring-2 focus-visible:ring-accent/50",
+          compact ? "min-h-10 items-center py-1.5 sm:min-h-8" : "py-2.5",
+          highlighted ? "bg-accent-soft" : "hover:bg-hover",
+        )}
       >
-        {/* Checkbox indicator for multi-selection mode */}
-        {(isMultiSelectMode || selectedNoteIds.length > 1) && (
-          <div
-            className="absolute top-3.5 left-2 z-10 p-1 cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setSelectedNoteIds((prev) =>
-                prev.includes(note.id)
-                  ? prev.filter((id) => id !== note.id)
-                  : [...prev, note.id]
-              );
-              setLastClickedId(note.id);
-            }}
-          >
-            {isSelected ? (
-              <CheckSquare size={13} className="text-blue-500" />
-            ) : (
-              <Square size={13} className="text-slate-400 group-hover:text-slate-600 dark:text-zinc-600" />
-            )}
+        {isActive && <span aria-hidden className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-accent" />}
+
+        {multiMode && (
+          <div className="flex items-start pt-0.5" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleSelected(note.id)}
+              aria-label={`Select ${note.title || "Untitled Note"}`}
+              className="h-4 w-4 rounded border-line-strong accent-[var(--c-accent)]"
+            />
           </div>
         )}
 
-        {/* Unread/Pinned Dot */}
-        {note.isPinned && !isActive && !(isMultiSelectMode || selectedNoteIds.length > 1) && (
-          <div className="absolute top-3 left-2 w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-        )}
-
-        <div className={`flex justify-between items-start gap-2 mb-1 ${(isMultiSelectMode || selectedNoteIds.length > 1) ? "pl-4.5" : ""}`}>
-          <h4 className="font-semibold text-[13px] leading-tight line-clamp-1 group-hover:text-blue-500 dark:group-hover:text-indigo-400 transition-colors">
-            {note.title || "Untitled Note"}
-          </h4>
-          <span className="text-[10px] opacity-60 font-mono whitespace-nowrap">
-            {formatNoteDate(note.updatedAt)}
-          </span>
-        </div>
-
-        <p className={`text-[12px] leading-relaxed mb-2 line-clamp-2 ${(isMultiSelectMode || selectedNoteIds.length > 1) ? "pl-4.5" : ""} ${
-          isActive
-            ? theme === "dark" ? "text-zinc-300" : "text-slate-600"
-            : theme === "dark" ? "text-zinc-400" : "text-slate-500"
-        }`}>
-          {excerpt}
-        </p>
-
-        <div className={`flex justify-between items-center gap-2 ${(isMultiSelectMode || selectedNoteIds.length > 1) ? "pl-4.5" : ""}`}>
-          {/* Status & Tags */}
-          <div className="flex gap-1 items-center overflow-hidden max-w-[75%]">
-            <span
-              className={`text-[9px] px-1.5 py-0.5 rounded-md font-sans font-bold uppercase tracking-wider ${
-                note.isTrashed
-                  ? "bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
-                  : note.isArchived
-                  ? "bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400"
-                  : note.status === "Published"
-                  ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
-                  : note.status === "In Review"
-                  ? "bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
-                  : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"
-              }`}
-            >
-              {note.isTrashed ? "Trashed" : note.isArchived ? "Archived" : note.status || "Draft"}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className={cn("min-w-0 flex-1 truncate text-[13px] font-medium", isActive ? "text-accent" : "text-fg")}>
+              {note.title || "Untitled Note"}
+            </h4>
+            <span className="flex shrink-0 items-center gap-1.5 text-fg-subtle group-focus-within:hidden group-hover:hidden">
+              {note.isPinned && <Pin size={11} aria-label="Pinned" />}
+              {note.isFavorite && <Star size={11} aria-label="Favorite" />}
+              {note.isShared && <Share2 size={11} aria-label="Shared" />}
+              {note.isLocked && <Lock size={11} aria-label="Locked" />}
             </span>
-
-            {note.tags.slice(0, 1).map((tag) => (
-              <button
-                key={tag}
-                onClick={(e) => {
-                  e.stopPropagation(); // Avoid selecting the card
-                  if (setActiveTag) {
-                    setActiveTag(activeTag === tag ? null : tag);
-                  }
-                }}
-                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium whitespace-nowrap cursor-pointer transition-all hover:scale-105 ${
-                  isActive
-                    ? "bg-blue-100/60 dark:bg-zinc-800 text-blue-600 dark:text-zinc-300 hover:bg-blue-200/60 dark:hover:bg-zinc-700"
-                    : "bg-slate-100 dark:bg-zinc-900/60 text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800"
-                }`}
-                title={`Filter by tag: #${tag}`}
-              >
-                {tag}
-              </button>
-            ))}
-            {note.tags.length > 1 && (
-              <span className="text-[9px] opacity-60 self-center">+{note.tags.length - 1}</span>
-            )}
+            <span className="hidden shrink-0 items-center gap-0.5 group-focus-within:flex group-hover:flex">
+              {onTogglePinNote && (
+                <IconButton size="sm" label={note.isPinned ? "Unpin note" : "Pin note"} onClick={(e) => { e.stopPropagation(); onTogglePinNote(note.id); }} className={cn("!h-6 !w-6", note.isPinned && "text-accent")}>
+                  <Pin size={12} className={note.isPinned ? "fill-current" : ""} />
+                </IconButton>
+              )}
+              {onToggleFavoriteNote && (
+                <IconButton size="sm" label={note.isFavorite ? "Remove from favorites" : "Add to favorites"} onClick={(e) => { e.stopPropagation(); onToggleFavoriteNote(note.id); }} className={cn("!h-6 !w-6", note.isFavorite && "text-accent")}>
+                  <Star size={12} className={note.isFavorite ? "fill-current" : ""} />
+                </IconButton>
+              )}
+              {onDeleteNote && (
+                <IconButton size="sm" label="Move to trash" onClick={(e) => { e.stopPropagation(); onDeleteNote(note.id); }} className="!h-6 !w-6 hover:!text-danger">
+                  <Trash2 size={12} />
+                </IconButton>
+              )}
+            </span>
+            <span className="shrink-0 text-[11px] tabular-nums text-fg-subtle">{formatNoteDate(note.updatedAt)}</span>
           </div>
 
-          {/* Action buttons (interactive hover menu) */}
-          <div className="flex items-center gap-1 group-hover:opacity-100 opacity-0 transition-opacity duration-155 relative z-20">
-            {onTogglePinNote && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTogglePinNote(note.id);
-                }}
-                title={note.isPinned ? "Unpin Note" : "Pin Note"}
-                className={`p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
-                  note.isPinned ? "text-amber-500" : "text-slate-400 dark:text-zinc-550 hover:text-slate-700 dark:hover:text-zinc-200"
-                }`}
-              >
-                <Pin size={11} className={note.isPinned ? "fill-amber-500 text-amber-500" : ""} />
-              </button>
-            )}
-            {onToggleFavoriteNote && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavoriteNote(note.id);
-                }}
-                title={note.isFavorite ? "Unstar Note" : "Star Note"}
-                className={`p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer ${
-                  note.isFavorite ? "text-rose-500" : "text-slate-400 dark:text-zinc-550 hover:text-slate-700 dark:hover:text-zinc-200"
-                }`}
-              >
-                <Star size={11} className={note.isFavorite ? "fill-rose-500 text-rose-500" : ""} />
-              </button>
-            )}
-            {onDeleteNote && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteNote(note.id);
-                }}
-                title="Move to Trash"
-                className="p-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-955/20 text-slate-400 dark:text-zinc-550 hover:text-rose-500 dark:hover:text-rose-400 transition-colors cursor-pointer"
-              >
-                <Trash2 size={11} />
-              </button>
-            )}
-          </div>
+          {!compact && (
+            <p className={cn("mt-0.5 text-[12px] text-fg-muted", searchResult?.hits.get(note.id) ? "line-clamp-2" : "truncate")}>
+              {searchResult?.hits.get(note.id) ? <SnippetText snippet={searchResult.hits.get(note.id)!.snippet} /> : excerpt}
+            </p>
+          )}
 
-          {/* Static badges indicators (visible when NOT hovered) */}
-          <div className="flex items-center gap-1.5 opacity-70 group-hover:hidden">
-            {note.isPinned && <Pin size={11} className="text-amber-500 fill-amber-500/20" />}
-            {note.isShared && <Share2 size={11} className="text-indigo-500" />}
-            {note.isFavorite && <Star size={11} className="text-yellow-500 fill-yellow-500/20" />}
-          </div>
+          {!compact && ((status && status !== "Draft") || note.tags.length > 0) && (
+            <div className="mt-1.5 flex items-center gap-1 overflow-hidden">
+              {status && status !== "Draft" && <Badge tone={statusTone}>{status}</Badge>}
+              {note.tags.slice(0, 2).map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (setActiveTag) setActiveTag(activeTag === tag ? null : tag);
+                  }}
+                  className="max-w-[96px] cursor-pointer truncate rounded-full bg-hover px-2 text-[11px] leading-5 text-fg-muted transition-colors hover:bg-active hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+                  title={`Filter by tag: #${tag}`}
+                >
+                  #{tag}
+                </button>
+              ))}
+              {note.tags.length > 2 && <span className="text-[11px] text-fg-subtle">+{note.tags.length - 2}</span>}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -491,329 +501,260 @@ export default function NotesList({
 
   const hasNotes = sortedNotes.length > 0;
 
+  const emptyCopy = (() => {
+    const q = searchQuery.trim();
+    if (q) return { icon: <Search size={18} />, title: "No search results", desc: `Nothing matches "${q}". Try a different word or clear the search.` };
+    switch (activeFolder) {
+      case "Trash": return { icon: <Trash2 size={18} />, title: "Trash is empty", desc: "Deleted notes land here so you can restore them." };
+      case "Archive": return { icon: <FolderInput size={18} />, title: "Archive is empty", desc: "Move older notes here to keep your workspace tidy." };
+      case "Favorites": return { icon: <Star size={18} />, title: "No favorites yet", desc: "Star a note to keep it within reach." };
+      case "Pinned": return { icon: <Pin size={18} />, title: "Nothing pinned", desc: "Pin important notes to keep them at the top." };
+      case "Shared": return { icon: <Share2 size={18} />, title: "No shared notes", desc: "Notes you share with collaborators will show up here." };
+      case "Drafts": return { icon: <FileEdit size={18} />, title: "No drafts", desc: "Notes still in progress appear here." };
+      case "Published": return { icon: <Globe size={18} />, title: "Nothing published", desc: "Published notes will be listed here." };
+      default: return { icon: <FileText size={18} />, title: `No notes in ${folderHeading}`, desc: "Create a note to start writing." };
+    }
+  })();
+
+  const groups: { key: string; label: string; items: Note[] }[] = searchResult
+    ? [{ key: "results", label: `Results (${sortedNotes.length})`, items: sortedNotes }]
+    : [
+    { key: "pinned", label: "Pinned", items: groupedNotes.pinned },
+    { key: "today", label: "Today", items: groupedNotes.today },
+    { key: "yesterday", label: "Yesterday", items: groupedNotes.yesterday },
+    { key: "last7", label: "Previous 7 days", items: groupedNotes.last7Days },
+    { key: "older", label: "Older", items: groupedNotes.older },
+  ];
+
+  const bulkBtn = "inline-flex h-10 w-10 sm:h-8 sm:w-8 items-center justify-center rounded-md border border-line bg-panel text-fg-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent cursor-pointer";
+
   return (
     <div
       ref={notesListRef}
       id="notes-list-column"
-      className={`${width ? "" : "w-[360px]"} h-full flex flex-col border-r border-border-primary transition-colors duration-200 relative bg-bg-primary text-text-primary`}
+      className={`${width ? "" : "w-[360px]"} relative flex h-full max-w-full flex-col border-r border-line bg-sidebar text-fg`}
       style={width ? { width: `${width}px`, minWidth: `${width}px`, flexGrow: 0, flexShrink: 0 } : undefined}
     >
-      {/* Top Header & Search */}
-      <div className="p-3 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="font-display font-semibold text-base tracking-tight text-slate-900 dark:text-zinc-100">
-              {folderHeading}
-            </h2>
-            {activeTag && (
-              <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                <span>#{activeTag}</span>
-                <button
-                  onClick={() => setActiveTag && setActiveTag(null)}
-                  className="hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer inline-flex items-center justify-center p-0.5 rounded hover:bg-blue-500/20"
-                  title="Clear tag filter"
-                >
-                  <X size={10} />
-                </button>
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {activeFolder === "Trash" && hasNotes && onEmptyTrash && (
-              <button
-                onClick={() => {
-                  if (confirm("Are you sure you want to permanently delete all notes in the Trash? This action cannot be undone.")) {
-                    onEmptyTrash();
-                  }
-                }}
-                className="px-2 py-1 rounded-md text-[10px] font-bold bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-transparent hover:bg-rose-200 dark:hover:bg-rose-900/40 transition-all flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 size={10} />
-                <span>Empty Trash</span>
-              </button>
-            )}
-            {/* Multi-select Mode Toggle */}
+      {/* Header */}
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
+        <h2 className="min-w-0 truncate text-[14px] font-semibold text-fg">{folderHeading}</h2>
+        {!loading && <span className="text-[12px] tabular-nums text-fg-subtle">{sortedNotes.length}</span>}
+        {activeTag && (
+          <Badge tone="accent" className="gap-1">
+            <span>#{activeTag}</span>
             <button
-              id="multi-select-toggle-btn"
+              type="button"
+              onClick={() => setActiveTag && setActiveTag(null)}
+              className="inline-flex cursor-pointer rounded-sm hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent"
+              aria-label="Clear tag filter"
+            >
+              <X size={10} />
+            </button>
+          </Badge>
+        )}
+        <div className="ml-auto flex items-center gap-0.5">
+          {activeFolder === "Trash" && hasNotes && onEmptyTrash && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="!text-danger"
+              leadingIcon={<Trash2 size={12} />}
               onClick={() => {
-                const newMode = !isMultiSelectMode;
-                setIsMultiSelectMode(newMode);
-                if (!newMode) {
-                  setSelectedNoteIds([]);
-                } else if (activeNoteId) {
-                  setSelectedNoteIds((prev) =>
-                    prev.includes(activeNoteId) ? prev : [...prev, activeNoteId]
-                  );
+                if (confirm("Are you sure you want to permanently delete all notes in the Trash? This action cannot be undone.")) {
+                  onEmptyTrash();
                 }
               }}
-              title="Toggle Select Mode"
-              className={`p-1.5 rounded-md border transition-colors ${
-                isMultiSelectMode
-                  ? "bg-blue-500 border-blue-500 text-white"
-                  : theme === "dark"
-                  ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white"
-                  : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
-              } cursor-pointer`}
             >
-              <CheckSquare size={13} />
-            </button>
-
-            {/* Sort Toggle */}
-            <button
-              id="sort-toggle-btn"
-              onClick={() => setSortField(sortField === "updatedAt" ? "title" : "updatedAt")}
-              title="Change Sorting"
-              className={`p-1.5 rounded-md border transition-colors ${
-                theme === "dark"
-                  ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white"
-                  : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
-              } cursor-pointer`}
-            >
-              <Filter size={13} />
-            </button>
-            <button
-              id="new-note-header-btn"
-              onClick={onNewNote}
-              title="New Note"
-              className={`p-1.5 rounded-md transition-colors ${
-                theme === "dark"
-                  ? "bg-zinc-800 hover:bg-zinc-700 text-white"
-                  : "bg-slate-200/80 hover:bg-slate-300/80 text-slate-800"
-              } cursor-pointer`}
-            >
-              <Plus size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* Search Input */}
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500" />
-          <input
-            id="notes-search-input"
-            type="text"
-            placeholder="Search notes, tags, or content..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full text-xs pl-8 pr-4 py-1.5 rounded-lg border outline-none transition-all ${
-              theme === "dark"
-                ? "bg-zinc-950 border-zinc-800/80 text-zinc-200 focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
-                : "bg-slate-100/60 border-slate-200/40 text-slate-800 focus:border-blue-400 focus:bg-white focus:ring-1 focus:ring-blue-400"
-            }`}
+              Empty
+            </Button>
+          )}
+          <IconButton
+            id="multi-select-toggle-btn"
+            label="Toggle select mode"
+            aria-pressed={isMultiSelectMode}
+            className={cn(isMultiSelectMode && "!bg-accent-soft !text-accent")}
+            onClick={() => {
+              const newMode = !isMultiSelectMode;
+              setIsMultiSelectMode(newMode);
+              if (!newMode) {
+                setSelectedNoteIds([]);
+              } else if (activeNoteId) {
+                setSelectedNoteIds((prev) => (prev.includes(activeNoteId) ? prev : [...prev, activeNoteId]));
+              }
+            }}
+          >
+            <ListChecks size={15} />
+          </IconButton>
+          <Menu
+            align="end"
+            items={[
+              { id: "sort-updated", label: sortField === "updatedAt" ? "Last edited (current)" : "Last edited", onSelect: () => setSortField("updatedAt") },
+              { id: "sort-title", label: sortField === "title" ? "Title A-Z (current)" : "Title A-Z", onSelect: () => setSortField("title") },
+            ]}
+            trigger={({ props }) => (
+              <IconButton id="sort-toggle-btn" label="Sort notes" {...props}>
+                <ArrowUpDown size={15} />
+              </IconButton>
+            )}
           />
+          <IconButton id="new-note-header-btn" label="New note" variant="subtle" onClick={onNewNote}>
+            <Plus size={15} />
+          </IconButton>
         </div>
       </div>
 
-      {/* Scroller / List items */}
-      <div className="flex-grow overflow-y-auto px-1 pb-20">
-        {!hasNotes ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 dark:text-zinc-500 my-auto">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 bg-slate-100 dark:bg-zinc-900 ${
-              theme === "dark" ? "text-zinc-400" : "text-slate-500"
-            }`}>
-              {activeFolder === "Trash" ? <Trash2 size={22} className="text-rose-500" /> :
-               activeFolder === "Archive" ? <Archive size={22} className="text-indigo-500" /> :
-               activeFolder === "Favorites" ? <Star size={22} className="text-yellow-500" /> :
-               activeFolder === "Shared" ? <Share2 size={22} className="text-blue-500" /> :
-               activeFolder === "Drafts" ? <FileEdit size={22} className="text-slate-500" /> :
-               activeFolder === "Published" ? <Globe size={22} className="text-emerald-500" /> :
-               searchQuery ? <Search size={22} /> :
-               <FileText size={22} className="text-indigo-500" />}
-            </div>
-            <h3 className="text-xs font-semibold text-slate-800 dark:text-zinc-100">
-              {searchQuery ? "No search results" :
-               activeFolder === "Trash" ? "Trash is Empty" :
-               activeFolder === "Archive" ? "Archive is Empty" :
-               activeFolder === "Favorites" ? "No Favorites" :
-               activeFolder === "Shared" ? "No Shared Notes" :
-               activeFolder === "Drafts" ? "No Drafts" :
-               activeFolder === "Published" ? "No Published Notes" :
-               `No notes in ${activeFolder}`}
-            </h3>
-            <p className="text-[10px] opacity-65 max-w-[200px] mt-1.5 leading-relaxed">
-              {searchQuery ? `We couldn't find any documents matching "${searchQuery}".` :
-               activeFolder === "Trash" ? "Deleted notes live here. Safely restore them anytime." :
-               activeFolder === "Archive" ? "Keep your workspace clean by moving older notes here." :
-               activeFolder === "Favorites" ? "Starred and pinned key documents will appear here." :
-               activeFolder === "Shared" ? "Documents shared via collaboration links will appear here." :
-               activeFolder === "Drafts" ? "Working notes under revision before publication." :
-               activeFolder === "Published" ? "All notes published to your public dashboard." :
-               `Create your first document inside ${activeFolder} to get started.`}
-            </p>
-            {!searchQuery && activeFolder !== "Trash" && activeFolder !== "Archive" && (
-              <button
-                onClick={onNewNote}
-                className="mt-3.5 px-3 py-1.5 rounded-xl bg-blue-500 text-white font-medium text-[10px] cursor-pointer hover:bg-blue-600 transition-all flex items-center gap-1 shadow-sm"
-              >
-                <Plus size={11} />
-                <span>Create New Note</span>
-              </button>
-            )}
+      {/* Search + density */}
+      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <Input
+            id="notes-search-input"
+            type="search"
+            aria-label="Search notes"
+            placeholder="Search notes"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            leadingIcon={<Search size={13} />}
+            trailing={searchQuery ? undefined : <Kbd>/</Kbd>}
+          />
+          {indexes?.status === "building" && searchQuery.trim() && (
+            <p className="mt-1 text-[11px] text-fg-subtle" role="status">Indexing notes ({indexes.done}/{indexes.total}). Showing basic matches until it finishes.</p>
+          )}
+        </div>
+        <Segmented
+          size="sm"
+          value={density}
+          onChange={(v) => setDensity(v as "comfortable" | "compact")}
+          items={[
+            { id: "comfortable", label: "Cozy" },
+            { id: "compact", label: "Compact" },
+          ]}
+        />
+      </div>
+
+      {/* List */}
+      <div
+        role="listbox"
+        aria-label={`${folderHeading} notes`}
+        aria-multiselectable
+        className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4", multiMode && selectedNoteIds.length > 0 && "pb-20")}
+      >
+        {loading ? (
+          <div className="flex flex-col gap-1 px-3 py-2" aria-busy="true" aria-label="Loading notes">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-1.5 py-2">
+                <Skeleton className="h-3.5 w-2/3" />
+                <Skeleton className="h-3 w-full" />
+              </div>
+            ))}
           </div>
+        ) : !hasNotes ? (
+          <EmptyState
+            className="h-full"
+            icon={emptyCopy.icon}
+            title={emptyCopy.title}
+            description={emptyCopy.desc}
+            action={
+              searchQuery ? (
+                <Button size="sm" variant="secondary" onClick={() => setSearchQuery("")}>Clear search</Button>
+              ) : activeFolder !== "Trash" && activeFolder !== "Archive" ? (
+                <Button size="sm" variant="primary" leadingIcon={<Plus size={13} />} onClick={onNewNote}>New note</Button>
+              ) : undefined
+            }
+          />
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {/* Today */}
-            {groupedNotes.today.length > 0 && (
-              <div>
-                <div className="text-[10px] font-semibold tracking-wider text-slate-400 dark:text-zinc-500 uppercase px-4 py-1.5 flex items-center gap-1.5">
-                  <Clock size={10} />
-                  <span>Today</span>
-                </div>
-                {groupedNotes.today.map(renderNoteCard)}
+          groups.filter((g) => g.items.length > 0).map((g) => (
+            <div key={g.key} role="group" aria-label={g.label} className="pb-2">
+              <div className="sticky top-0 z-10 bg-sidebar px-4 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-fg-subtle">
+                {g.label}
               </div>
-            )}
-
-            {/* Yesterday */}
-            {groupedNotes.yesterday.length > 0 && (
-              <div>
-                <div className="text-[10px] font-semibold tracking-wider text-slate-400 dark:text-zinc-500 uppercase px-4 py-1.5 flex items-center gap-1.5">
-                  <Calendar size={10} />
-                  <span>Yesterday</span>
-                </div>
-                {groupedNotes.yesterday.map(renderNoteCard)}
-              </div>
-            )}
-
-            {/* Last 7 Days */}
-            {groupedNotes.last7Days.length > 0 && (
-              <div>
-                <div className="text-[10px] font-semibold tracking-wider text-slate-400 dark:text-zinc-500 uppercase px-4 py-1.5">
-                  <span>Last 7 Days</span>
-                </div>
-                {groupedNotes.last7Days.map(renderNoteCard)}
-              </div>
-            )}
-
-            {/* Older */}
-            {groupedNotes.older.length > 0 && (
-              <div>
-                <div className="text-[10px] font-semibold tracking-wider text-slate-400 dark:text-zinc-500 uppercase px-4 py-1.5">
-                  <span>Older Notes</span>
-                </div>
-                {groupedNotes.older.map(renderNoteCard)}
-              </div>
-            )}
-          </div>
+              {g.items.map(renderNoteCard)}
+            </div>
+          ))
         )}
       </div>
 
-      {/* Slide-Up Bulk Actions Panel */}
+      {/* Bulk actions */}
       {((isMultiSelectMode && selectedNoteIds.length > 0) || selectedNoteIds.length > 1) && (
-        <div className={`absolute bottom-0 left-0 right-0 p-4 border-t shadow-2xl flex items-center justify-between z-30 transition-all ${
-          theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
-        }`}>
+        <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-2 border-t border-line bg-raised p-3 shadow-pop">
           <div className="flex flex-col">
-            <span className="text-xs font-bold">{selectedNoteIds.length} Selected</span>
+            <span className="text-[13px] font-medium text-fg">{selectedNoteIds.length} selected</span>
             <button
+              type="button"
               onClick={() => setSelectedNoteIds([])}
-              className="text-[10px] text-blue-500 hover:underline text-left"
+              className="cursor-pointer text-left text-[12px] text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
             >
-              Deselect All
+              Deselect all
             </button>
           </div>
 
           <div className="flex items-center gap-2">
             {activeFolder === "Trash" ? (
               <>
-                {/* Bulk Restore from Trash */}
                 {onBulkRestoreNotes && (
-                  <button
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon={<RotateCcw size={12} />}
                     onClick={() => {
                       onBulkRestoreNotes(selectedNoteIds);
                       setSelectedNoteIds([]);
                     }}
-                    title="Restore Selected"
-                    className={`px-3 py-1.5 rounded-lg border hover:bg-slate-50 dark:hover:bg-zinc-800 flex items-center gap-1 text-xs font-medium cursor-pointer ${
-                      theme === "dark" ? "border-zinc-800 text-zinc-300" : "border-slate-200 text-slate-700"
-                    }`}
                   >
-                    <RotateCcw size={12} className="text-emerald-500" />
-                    <span>Restore</span>
-                  </button>
+                    Restore
+                  </Button>
                 )}
-
-                {/* Bulk Delete Permanently */}
                 {onBulkDeletePermanently && (
-                  <button
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    leadingIcon={<Trash2 size={12} />}
                     onClick={() => {
                       if (confirm(`Are you sure you want to permanently delete these ${selectedNoteIds.length} notes? This action cannot be undone.`)) {
                         onBulkDeletePermanently(selectedNoteIds);
                         setSelectedNoteIds([]);
                       }
                     }}
-                    title="Delete Permanently"
-                    className="px-3 py-1.5 rounded-lg border bg-rose-500 hover:bg-rose-600 text-white flex items-center gap-1 text-xs font-semibold border-transparent cursor-pointer shadow-sm"
                   >
-                    <Trash2 size={12} />
-                    <span>Delete Permanently</span>
-                  </button>
+                    Delete permanently
+                  </Button>
                 )}
               </>
             ) : (
               <>
-                {/* Bulk Favorite */}
                 {onBulkFavoriteNotes && (
-                  <button
-                    onClick={() => {
-                      onBulkFavoriteNotes(selectedNoteIds, true);
-                      setSelectedNoteIds([]);
-                    }}
-                    title="Favorite"
-                    className={`p-2 rounded-xl border hover:bg-slate-50 dark:hover:bg-zinc-800 ${
-                      theme === "dark" ? "border-zinc-800" : "border-slate-200"
-                    } cursor-pointer`}
-                  >
-                    <Star size={14} className="text-yellow-500" />
+                  <button type="button" aria-label="Favorite selected" title="Favorite" className={bulkBtn}
+                    onClick={() => { onBulkFavoriteNotes(selectedNoteIds, true); setSelectedNoteIds([]); }}>
+                    <Star size={14} />
                   </button>
                 )}
-
-                {/* Bulk Archive */}
                 {onBulkArchiveNotes && (
-                  <button
-                    onClick={() => {
-                      onBulkArchiveNotes(selectedNoteIds, true);
-                      setSelectedNoteIds([]);
-                    }}
-                    title="Archive"
-                    className={`p-2 rounded-xl border hover:bg-slate-50 dark:hover:bg-zinc-800 ${
-                      theme === "dark" ? "border-zinc-800" : "border-slate-200"
-                    } cursor-pointer`}
-                  >
-                    <Archive size={14} className="text-indigo-500" />
+                  <button type="button" aria-label="Archive selected" title="Archive" className={bulkBtn}
+                    onClick={() => { onBulkArchiveNotes(selectedNoteIds, true); setSelectedNoteIds([]); }}>
+                    <Archive size={14} />
                   </button>
                 )}
-
-                {/* Bulk Move To Folder */}
                 {onBulkMoveNotes && (
                   <div ref={bulkMoveMenuRef} className="relative">
-                    <button
-                      onClick={() => setIsMoveMenuOpen(!isMoveMenuOpen)}
-                      title="Move to Folder"
-                      className={`p-2 rounded-xl border hover:bg-slate-50 dark:hover:bg-zinc-800 flex items-center gap-1 ${
-                        theme === "dark" ? "border-zinc-800" : "border-slate-200"
-                      } cursor-pointer`}
-                    >
-                      <FolderInput size={14} className="text-blue-500" />
+                    <button type="button" aria-label="Move selected to folder" aria-haspopup="menu" aria-expanded={isMoveMenuOpen} title="Move to folder" className={bulkBtn}
+                      onClick={() => setIsMoveMenuOpen(!isMoveMenuOpen)}>
+                      <FolderInput size={14} />
                     </button>
-
                     {isMoveMenuOpen && (
-                      <div className={`absolute bottom-12 right-0 w-48 max-h-48 overflow-y-auto p-1.5 rounded-2xl border shadow-2xl flex flex-col gap-0.5 z-50 ${
-                        theme === "dark" ? "bg-zinc-950 border-zinc-800" : "bg-white border-slate-200"
-                      }`}>
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">Move to:</span>
+                      <div role="menu" className="absolute bottom-12 right-0 z-50 flex max-h-56 w-52 flex-col gap-px overflow-y-auto rounded-lg border border-line bg-raised p-1 shadow-pop">
+                        <span className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-fg-subtle">Move to</span>
                         {folders.map((folder) => (
                           <button
                             key={folder.id}
+                            type="button"
+                            role="menuitem"
                             onClick={() => {
                               onBulkMoveNotes(selectedNoteIds, folder.id);
                               setSelectedNoteIds([]);
                               setIsMoveMenuOpen(false);
                             }}
-                            className={`text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-slate-50 dark:hover:bg-zinc-900 cursor-pointer ${
-                              theme === "dark" ? "text-zinc-300" : "text-slate-700"
-                            }`}
+                            className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent"
                           >
-                            <span className="text-xs">{folder.icon || "📁"}</span>
+                            <span className="text-[13px]">{folder.icon || "📁"}</span>
                             <span className="truncate">{folder.name}</span>
                           </button>
                         ))}
@@ -821,18 +762,10 @@ export default function NotesList({
                     )}
                   </div>
                 )}
-
-                {/* Bulk Delete */}
                 {onBulkDeleteNotes && (
-                  <button
-                    onClick={() => {
-                      onBulkDeleteNotes(selectedNoteIds);
-                      setSelectedNoteIds([]);
-                    }}
-                    title="Trash"
-                    className={`p-2 rounded-xl border hover:bg-rose-50/50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-900/50 cursor-pointer`}
-                  >
-                    <Trash2 size={14} className="text-rose-500" />
+                  <button type="button" aria-label="Move selected to trash" title="Trash" className={cn(bulkBtn, "hover:!text-danger")}
+                    onClick={() => { onBulkDeleteNotes(selectedNoteIds); setSelectedNoteIds([]); }}>
+                    <Trash2 size={14} />
                   </button>
                 )}
               </>

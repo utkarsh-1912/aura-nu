@@ -52,6 +52,25 @@ import {
 import { Note, Workspace, Folder, Settings } from "../types";
 import CodeBlockContainer from "./CodeBlockContainer";
 import TableContainer from "./TableContainer";
+import { Badge, Button, IconButton, Kbd, cn } from "../ui";
+import { ArrowLeft, ShieldCheck } from "lucide-react";
+import NoteBodyEditor from "../features/editor/NoteBodyEditor";
+import BacklinksPanel from "../features/panels/BacklinksPanel";
+import { FLAG_TIPTAP_EDITOR, useFlag } from "../features/flags";
+import { isEncryptedNote } from "../features/encryption/helpers";
+import { EncryptNoteDialog, EncryptedNotePanel } from "../features/encryption/EncryptionUi";
+import type { NoteIndexes } from "../features/indexes/useNoteIndexes";
+
+/** Optional wiring supplied by WorkspacePage (indexes, link navigation, phone back button). */
+export interface EditorExtras {
+  indexes?: NoteIndexes;
+  workspaceNotes?: Note[];
+  openNote?: (id: string) => void;
+  /** Creates a note titled `title` (for unresolved [[links]]) and returns its id. */
+  createNoteWithTitle?: (title: string) => string | undefined;
+  /** Phones: return to the notes list. */
+  onBack?: () => void;
+}
 
 interface EditorAreaProps {
   note: Note | null;
@@ -72,6 +91,7 @@ interface EditorAreaProps {
   isFocusMode: boolean;
   setIsFocusMode: (focus: boolean) => void;
   settings?: Settings;
+  extras?: EditorExtras;
 }
 
 export default function EditorArea({
@@ -93,7 +113,11 @@ export default function EditorArea({
   isFocusMode,
   setIsFocusMode,
   settings,
+  extras,
 }: EditorAreaProps) {
+  const [tiptapOn] = useFlag(FLAG_TIPTAP_EDITOR);
+  const [encryptOpen, setEncryptOpen] = useState(false);
+  const encrypted = isEncryptedNote(note);
   const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("split");
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashMenuCoords, setSlashMenuCoords] = useState({ top: 0, left: 0 });
@@ -106,7 +130,7 @@ export default function EditorArea({
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
     } else {
-      if (!note?.content) return;
+      if (!note?.content || encrypted) return;
       const cleanText = note.content
         .replace(/[#*_\-\[\]]/g, "")
         .replace(/!\[.*?\]\(.*?\)/g, "")
@@ -575,7 +599,7 @@ export default function EditorArea({
 
   // Sync state & save note changes
   useEffect(() => {
-    if (!note) return;
+    if (!note || isEncryptedNote(note)) return;
     // Calculate word count & reading time
     const words = note.content ? note.content.trim().split(/\s+/).filter(Boolean).length : 0;
     const readTime = Math.max(1, Math.ceil(words / 200));
@@ -717,15 +741,15 @@ export default function EditorArea({
 
   if (!note) {
     return (
-      <div id="editor-empty-state" className="flex-grow h-full flex flex-col items-center justify-center p-8 bg-bg-primary text-text-primary">
+      <div id="editor-empty-state" className="flex-grow h-full flex flex-col items-center justify-center p-8 bg-surface text-fg">
         <div className="max-w-md text-center flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-zinc-900 flex items-center justify-center mb-6 shadow-sm border border-slate-100 dark:border-zinc-800">
-            <FileText size={32} className="text-slate-400 dark:text-zinc-500" />
+          <div className="w-16 h-16 rounded-lg bg-panel flex items-center justify-center mb-6 shadow-soft border border-line">
+            <FileText size={32} className="text-fg-subtle" />
           </div>
-          <h3 className="font-display font-semibold text-lg text-slate-800 dark:text-zinc-200 mb-2">
+          <h3 className="font-semibold text-lg text-fg mb-2">
             No Note Active
           </h3>
-          <p className="text-sm text-slate-500 dark:text-zinc-400 mb-6">
+          <p className="text-sm text-fg-muted mb-6">
             Select an existing document from the notes list or launch a clean new workspace to start writing.
           </p>
         </div>
@@ -733,26 +757,71 @@ export default function EditorArea({
     );
   }
 
-  // Formatting Actions
+  // Formatting Actions (Unified Live Document Editor + Textarea compatible)
   const insertMarkdown = (syntaxBefore: string, syntaxAfter = "") => {
     const textarea = textareaRef.current;
-    if (!textarea) return;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
+      const selectedText = text.substring(start, end);
+      const replacement = syntaxBefore + selectedText + syntaxAfter;
 
-    const selectedText = text.substring(start, end);
-    const replacement = syntaxBefore + selectedText + syntaxAfter;
+      const newContent = text.substring(0, start) + replacement + text.substring(end);
+      handleContentChange(newContent);
 
-    const newContent = text.substring(0, start) + replacement + text.substring(end);
-    handleContentChange(newContent);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + syntaxBefore.length, start + syntaxBefore.length + selectedText.length);
+      }, 50);
+      return;
+    }
 
-    // Refocus & restore selection
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + syntaxBefore.length, start + syntaxBefore.length + selectedText.length);
-    }, 50);
+    // Unified block editor handling
+    const currentLines = (note.content || "").split("\n");
+    const targetIdx = editingBlockIndex !== null && editingBlockIndex < currentLines.length
+      ? editingBlockIndex
+      : currentLines.length - 1;
+
+    // Multi-line block insertions (table, code block, image, file attachment)
+    if (syntaxBefore.includes("\n") || syntaxAfter.includes("\n")) {
+      const blockText = `${syntaxBefore}${syntaxAfter}`.trim();
+      const newLines = blockText.split("\n");
+      currentLines.splice(targetIdx + 1, 0, ...newLines);
+      const joined = currentLines.join("\n");
+      setLocalContent(joined);
+      handleContentChange(joined);
+      setEditingBlockIndex(null);
+      return;
+    }
+
+    // Prefix toggles (# , ## , - , 1. , - [ ] )
+    if (!syntaxAfter && ["# ", "## ", "- ", "1. ", "- [ ] "].includes(syntaxBefore)) {
+      const existingLine = currentLines[targetIdx] || "";
+      const stripped = existingLine
+        .replace(/^(#{1,3}\s+|- \[[ xX]\]\s+|- |\* |\d+\.\s+|>\s+)/, "");
+      const updatedLine = existingLine.startsWith(syntaxBefore)
+        ? stripped
+        : `${syntaxBefore}${stripped || "New item"}`;
+      currentLines[targetIdx] = updatedLine;
+      const joined = currentLines.join("\n");
+      setLocalContent(joined);
+      handleContentChange(joined);
+      setEditingBlockIndex(targetIdx);
+      setEditingBlockContent(updatedLine);
+      return;
+    }
+
+    // Inline insertions (e.g. Link)
+    const existingLine = currentLines[targetIdx] || "";
+    const updatedLine = `${existingLine}${existingLine ? " " : ""}${syntaxBefore}link${syntaxAfter}`;
+    currentLines[targetIdx] = updatedLine;
+    const joined = currentLines.join("\n");
+    setLocalContent(joined);
+    handleContentChange(joined);
+    setEditingBlockIndex(targetIdx);
+    setEditingBlockContent(updatedLine);
   };
 
   const checkSelectionStyles = () => {
@@ -789,21 +858,43 @@ export default function EditorArea({
   };
 
   const toggleFormat = (type: "bold" | "italic" | "underline" | "code") => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-
-    const selectedText = text.substring(start, end);
-
     let syntaxBefore = "";
     let syntaxAfter = "";
     if (type === "bold") { syntaxBefore = "**"; syntaxAfter = "**"; }
     else if (type === "italic") { syntaxBefore = "*"; syntaxAfter = "*"; }
     else if (type === "underline") { syntaxBefore = "__"; syntaxAfter = "__"; }
     else if (type === "code") { syntaxBefore = "`"; syntaxAfter = "`"; }
+
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      // Unified block editor inline formatting
+      const currentLines = (note.content || "").split("\n");
+      const targetIdx = editingBlockIndex !== null && editingBlockIndex < currentLines.length
+        ? editingBlockIndex
+        : currentLines.length - 1;
+      const line = currentLines[targetIdx] || "";
+      const prefixMatch = line.match(/^(#{1,3}\s+|- \[[ xX]\]\s+|- |\* |\d+\.\s+|>\s+)/);
+      const prefix = prefixMatch ? prefixMatch[0] : "";
+      const body = line.slice(prefix.length);
+      const isWrapped = body.startsWith(syntaxBefore) && body.endsWith(syntaxAfter) && body.length >= syntaxBefore.length + syntaxAfter.length;
+      const nextBody = isWrapped
+        ? body.slice(syntaxBefore.length, body.length - syntaxAfter.length)
+        : `${syntaxBefore}${body || "text"}${syntaxAfter}`;
+      const updatedLine = `${prefix}${nextBody}`;
+      currentLines[targetIdx] = updatedLine;
+      const joined = currentLines.join("\n");
+      setLocalContent(joined);
+      handleContentChange(joined);
+      setEditingBlockIndex(targetIdx);
+      setEditingBlockContent(updatedLine);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    const selectedText = text.substring(start, end);
 
     const lenB = syntaxBefore.length;
     const lenA = syntaxAfter.length;
@@ -891,48 +982,56 @@ export default function EditorArea({
   };
 
   const handleInsertSlashCommand = (command: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const text = textarea.value;
-
-    // Remove the "/"
-    const beforeSlash = text.substring(0, start - 1);
-    const afterSlash = text.substring(start);
-
-    let insertedContent = "";
+    let insertedLines: string[] = [""];
     switch (command) {
       case "h1":
-        insertedContent = "\n# Heading 1\n";
+        insertedLines = ["# Heading 1"];
         break;
       case "h2":
-        insertedContent = "\n## Heading 2\n";
+        insertedLines = ["## Heading 2"];
         break;
       case "todo":
-        insertedContent = "\n- [ ] Task item\n";
+        insertedLines = ["- [ ] Task item"];
         break;
       case "bullet":
-        insertedContent = "\n- Bullet point\n";
+        insertedLines = ["- Bullet point"];
         break;
       case "code":
-        insertedContent = "\n```typescript\n// Write your code here\n\n```\n";
+        insertedLines = ["```typescript", "// Write your code here", "```"];
         break;
       case "table":
-        insertedContent = "\n| Header 1 | Header 2 |\n|---|---|\n| Value 1 | Value 2 |\n";
+        insertedLines = ["| Header 1 | Header 2 |", "|---|---|", "| Value 1 | Value 2 |"];
         break;
       case "quote":
-        insertedContent = "\n> Elegant quote segment here\n";
+        insertedLines = ["> Elegant quote segment here"];
         break;
     }
 
-    const newContent = beforeSlash + insertedContent + afterSlash;
+    const currentLines = (note.content || "").split("\n");
+    const targetIdx = editingBlockIndex !== null && editingBlockIndex < currentLines.length
+      ? editingBlockIndex
+      : currentLines.length - 1;
+
+    const cleanedLine = (currentLines[targetIdx] || "").replace(/\/$/, "").trim();
+    if (cleanedLine) {
+      currentLines[targetIdx] = cleanedLine;
+      currentLines.splice(targetIdx + 1, 0, ...insertedLines);
+    } else {
+      currentLines.splice(targetIdx, 1, ...insertedLines);
+    }
+
+    const newContent = currentLines.join("\n");
+    setLocalContent(newContent);
     handleContentChange(newContent);
     setShowSlashMenu(false);
 
-    setTimeout(() => {
-      textarea.focus();
-    }, 50);
+    if (insertedLines.length === 1) {
+      const nextIdx = cleanedLine ? targetIdx + 1 : targetIdx;
+      setEditingBlockIndex(nextIdx);
+      setEditingBlockContent(insertedLines[0]);
+    } else {
+      setEditingBlockIndex(null);
+    }
   };
 
   // Interactive Checklist toggle inside preview pane!
@@ -1054,7 +1153,7 @@ export default function EditorArea({
         const matches = text.split(regex);
         matches.forEach((p, idx) => {
           if (p.toLowerCase() === findQuery.toLowerCase()) {
-            parts.push(<mark key={`${keyPrefix}-find-${idx}`} className="bg-amber-300 dark:bg-amber-700/80 text-slate-900 dark:text-zinc-100 rounded px-0.5 font-semibold">{p}</mark>);
+            parts.push(<mark key={`${keyPrefix}-find-${idx}`} className="bg-warning text-fg rounded px-0.5 font-semibold">{p}</mark>);
           } else {
             parts.push(<span key={`${keyPrefix}-text-${idx}`}>{p}</span>);
           }
@@ -1087,8 +1186,8 @@ export default function EditorArea({
           key={currentKey}
           className={`font-mono text-xs px-1.5 py-0.5 mx-0.5 rounded-md select-text ${
             theme === "dark"
-              ? "bg-zinc-800 text-amber-400 border border-zinc-700/50"
-              : "bg-slate-100 text-amber-700 border border-slate-200"
+              ? "bg-hover text-warning border border-line"
+              : "bg-hover text-warning border border-line"
           }`}
         >
           {matchContent}
@@ -1102,7 +1201,7 @@ export default function EditorArea({
           href={linkUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-500 hover:underline inline-flex items-center gap-0.5 font-medium cursor-pointer"
+          className="text-accent hover:underline inline-flex items-center gap-0.5 font-medium cursor-pointer"
         >
           {renderInlineMarkdown(matchContent, `${currentKey}-link-label`)}
           <ExternalLink size={10} className="inline-block" />
@@ -1110,27 +1209,27 @@ export default function EditorArea({
       );
     } else if (selectedPattern.type === "bold_italic_stars" || selectedPattern.type === "bold_italic_mixed1" || selectedPattern.type === "bold_italic_mixed2") {
       parts.push(
-        <strong key={currentKey} className="font-bold text-slate-900 dark:text-zinc-50">
-          <em className="italic text-slate-850 dark:text-zinc-200">
+        <strong key={currentKey} className="font-bold text-fg">
+          <em className="italic text-fg">
             {renderInlineMarkdown(matchContent, `${currentKey}-bold-italic`)}
           </em>
         </strong>
       );
     } else if (selectedPattern.type === "bold_stars") {
       parts.push(
-        <strong key={currentKey} className="font-bold text-slate-900 dark:text-zinc-50">
+        <strong key={currentKey} className="font-bold text-fg">
           {renderInlineMarkdown(matchContent, `${currentKey}-bold`)}
         </strong>
       );
     } else if (selectedPattern.type === "underline_underscores") {
       parts.push(
-        <u key={currentKey} className="underline decoration-slate-400 dark:decoration-zinc-650">
+        <u key={currentKey} className="underline">
           {renderInlineMarkdown(matchContent, `${currentKey}-underline`)}
         </u>
       );
     } else if (selectedPattern.type === "italic_stars" || selectedPattern.type === "italic_underscores") {
       parts.push(
-        <em key={currentKey} className="italic text-slate-850 dark:text-zinc-200">
+        <em key={currentKey} className="italic text-fg">
           {renderInlineMarkdown(matchContent, `${currentKey}-italic`)}
         </em>
       );
@@ -1144,9 +1243,111 @@ export default function EditorArea({
     return parts;
   };
 
-  // Render markdown parser in the client beautifully
+  // Unified Live Block Editor helpers (merges Markdown & Rich Text into a single surface)
+  const handleUnifiedBlockChange = (newVal: string, currentIdx: number, currentLines: string[]) => {
+    setEditingBlockContent(newVal);
+    if (newVal.endsWith("/")) {
+      setShowSlashMenu(true);
+    } else {
+      setShowSlashMenu(false);
+    }
+    const updatedLines = [...currentLines];
+    updatedLines[currentIdx] = newVal;
+    const joined = updatedLines.join("\n");
+    setLocalContent(joined);
+    handleContentChange(joined, true);
+  };
+
+  const handleUnifiedBlockKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+    currentIdx: number,
+    currentLines: string[]
+  ) => {
+    if (e.key === "Escape") {
+      setShowSlashMenu(false);
+      setEditingBlockIndex(null);
+      return;
+    }
+
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      setShowSlashMenu(false);
+      const line = editingBlockContent;
+
+      // If pressing Enter on an empty list/quote prefix, convert to plain line
+      if (/^(- \[[ xX]\]\s*|- |\* |\d+\.\s*|>\s*)$/.test(line.trim() + " ")) {
+        const updatedLines = [...currentLines];
+        updatedLines[currentIdx] = "";
+        const joined = updatedLines.join("\n");
+        setLocalContent(joined);
+        handleContentChange(joined, true);
+        setEditingBlockContent("");
+        return;
+      }
+
+      // Carry over list prefixes automatically on new line
+      let nextLinePrefix = "";
+      if (line.startsWith("- [ ] ") || line.startsWith("- [x] ") || line.startsWith("- [X] ")) {
+        nextLinePrefix = "- [ ] ";
+      } else if (line.startsWith("- ")) {
+        nextLinePrefix = "- ";
+      } else if (line.startsWith("* ")) {
+        nextLinePrefix = "* ";
+      } else {
+        const numMatch = line.match(/^(\d+)\.\s+/);
+        if (numMatch) {
+          nextLinePrefix = `${parseInt(numMatch[1], 10) + 1}. `;
+        }
+      }
+
+      const updatedLines = [...currentLines];
+      updatedLines.splice(currentIdx + 1, 0, nextLinePrefix);
+      const joined = updatedLines.join("\n");
+      setLocalContent(joined);
+      handleContentChange(joined, true);
+      setEditingBlockIndex(currentIdx + 1);
+      setEditingBlockContent(nextLinePrefix);
+      return;
+    }
+
+    if (e.key === "Backspace" && editingBlockContent === "" && currentLines.length > 1) {
+      e.preventDefault();
+      setShowSlashMenu(false);
+      const updatedLines = [...currentLines];
+      updatedLines.splice(currentIdx, 1);
+      const prevIdx = Math.max(0, currentIdx - 1);
+      const joined = updatedLines.join("\n");
+      setLocalContent(joined);
+      handleContentChange(joined, true);
+      setEditingBlockIndex(prevIdx);
+      setEditingBlockContent(updatedLines[prevIdx] || "");
+      return;
+    }
+
+    if (e.key === "ArrowUp" && currentIdx > 0) {
+      const target = e.currentTarget;
+      if (target.selectionStart === 0) {
+        e.preventDefault();
+        setEditingBlockIndex(currentIdx - 1);
+        setEditingBlockContent(currentLines[currentIdx - 1] || "");
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown" && currentIdx < currentLines.length - 1) {
+      const target = e.currentTarget;
+      if (target.selectionStart === target.value.length) {
+        e.preventDefault();
+        setEditingBlockIndex(currentIdx + 1);
+        setEditingBlockContent(currentLines[currentIdx + 1] || "");
+      }
+      return;
+    }
+  };
+
+  // Render unified live document in the client (merges Markdown and formatted rich text in one view)
   const renderRichPreview = () => {
-    const lines = note.content.split("\n");
+    const lines = (note.content || "").split("\n");
     const renderedElements: React.ReactNode[] = [];
     let i = 0;
 
@@ -1224,25 +1425,29 @@ export default function EditorArea({
         const currentIdx = i;
         if (editingBlockIndex === currentIdx && !note.isLocked) {
           renderedElements.push(
-            <div key={`edit-checklist-${currentIdx}`} className="flex items-center gap-2.5 my-2.5 select-none animate-fade-in w-full">
+            <div key={`edit-checklist-${currentIdx}`} className="flex items-center gap-2.5 my-2 select-none animate-fade-in w-full">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  toggleChecklistItem(currentIdx);
+                }}
+                className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                  isChecked
+                    ? "bg-accent border-accent/40 text-accent-fg"
+                    : "border-line hover:border-accent/40"
+                } cursor-pointer`}
+              >
+                {isChecked && <Check size={11} className="stroke-[3]" />}
+              </button>
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-[14px] text-slate-800 dark:text-zinc-300 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-0.5 border border-accent/40 outline-none text-[14px] text-fg"
               />
             </div>
           );
@@ -1250,25 +1455,29 @@ export default function EditorArea({
           renderedElements.push(
             <div
               key={`checklist-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`flex items-center gap-2.5 my-2.5 select-none animate-fade-in rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`flex items-center gap-2.5 my-2 select-none animate-fade-in rounded-lg px-1.5 py-0.5 hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               <button
-                onClick={() => toggleChecklistItem(currentIdx)}
-                className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleChecklistItem(currentIdx);
+                }}
+                className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
                   isChecked
-                    ? "bg-blue-500 border-blue-500 text-white"
-                    : "border-slate-300 dark:border-zinc-700 hover:border-blue-400"
+                    ? "bg-accent border-accent/40 text-accent-fg"
+                    : "border-line hover:border-accent/40"
                 } cursor-pointer`}
               >
                 {isChecked && <Check size={11} className="stroke-[3]" />}
               </button>
-              <span className={`text-[14px] ${isChecked ? "line-through text-slate-400 dark:text-zinc-500" : "text-slate-800 dark:text-zinc-300"}`}>
+              <span className={`text-[14px] ${isChecked ? "line-through text-fg-subtle" : "text-fg"}`}>
                 {renderInlineMarkdown(labelText)}
               </span>
             </div>
@@ -1283,25 +1492,15 @@ export default function EditorArea({
         const currentIdx = i;
         if (editingBlockIndex === currentIdx && !note.isLocked) {
           renderedElements.push(
-            <div key={`edit-bullet-${currentIdx}`} className="pl-4 my-1 w-full animate-fade-in">
+            <div key={`edit-bullet-${currentIdx}`} className="pl-2 my-1 w-full animate-fade-in">
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-sm text-slate-750 dark:text-zinc-350 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-0.5 border border-accent/40 outline-none text-sm text-fg"
               />
             </div>
           );
@@ -1309,13 +1508,13 @@ export default function EditorArea({
           renderedElements.push(
             <li
               key={`bullet-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`text-sm list-disc list-inside text-slate-700 dark:text-zinc-300 my-1 pl-2 rounded-lg hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`text-sm list-disc list-inside text-fg my-1 px-2 py-0.5 rounded-lg hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               {renderInlineMarkdown(line.substring(2))}
             </li>
@@ -1331,25 +1530,15 @@ export default function EditorArea({
         const currentIdx = i;
         if (editingBlockIndex === currentIdx && !note.isLocked) {
           renderedElements.push(
-            <div key={`edit-numbered-${currentIdx}`} className="pl-4 my-1 w-full animate-fade-in">
+            <div key={`edit-numbered-${currentIdx}`} className="pl-2 my-1 w-full animate-fade-in">
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-sm text-slate-750 dark:text-zinc-350 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-0.5 border border-accent/40 outline-none text-sm text-fg"
               />
             </div>
           );
@@ -1357,13 +1546,13 @@ export default function EditorArea({
           renderedElements.push(
             <li
               key={`numbered-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`text-sm list-decimal list-inside text-slate-700 dark:text-zinc-300 my-1 pl-2 rounded-lg hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`text-sm list-decimal list-inside text-fg my-1 px-2 py-0.5 rounded-lg hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               {renderInlineMarkdown(matchNumbered[2])}
             </li>
@@ -1382,21 +1571,11 @@ export default function EditorArea({
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-2xl font-bold tracking-tight text-slate-900 dark:text-zinc-50 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-1 border border-accent/40 outline-none text-2xl font-bold tracking-tight text-fg"
               />
             </div>
           );
@@ -1404,13 +1583,13 @@ export default function EditorArea({
           renderedElements.push(
             <h1
               key={`h1-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`text-2xl font-bold tracking-tight mb-4 mt-6 text-slate-900 dark:text-zinc-50 flex items-center gap-2 rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`text-2xl font-bold tracking-tight mb-4 mt-6 text-fg flex items-center gap-2 rounded-lg px-1.5 py-0.5 hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               {renderInlineMarkdown(line.replace("# ", ""))}
             </h1>
@@ -1427,21 +1606,11 @@ export default function EditorArea({
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-1 border border-accent/40 outline-none text-xl font-semibold tracking-tight text-fg"
               />
             </div>
           );
@@ -1449,13 +1618,13 @@ export default function EditorArea({
           renderedElements.push(
             <h2
               key={`h2-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`text-xl font-semibold tracking-tight mb-3 mt-5 text-slate-900 dark:text-zinc-100 flex items-center gap-2 rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`text-xl font-semibold tracking-tight mb-3 mt-5 text-fg flex items-center gap-2 rounded-lg px-1.5 py-0.5 hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               {renderInlineMarkdown(line.replace("## ", ""))}
             </h2>
@@ -1472,21 +1641,11 @@ export default function EditorArea({
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-lg font-medium text-slate-900 dark:text-zinc-100 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-0.5 border border-accent/40 outline-none text-lg font-medium text-fg"
               />
             </div>
           );
@@ -1494,13 +1653,13 @@ export default function EditorArea({
           renderedElements.push(
             <h3
               key={`h3-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`text-lg font-medium mb-2 mt-4 text-slate-900 dark:text-zinc-100 flex items-center gap-2 rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`text-lg font-medium mb-2 mt-4 text-fg flex items-center gap-2 rounded-lg px-1.5 py-0.5 hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               {renderInlineMarkdown(line.replace("### ", ""))}
             </h3>
@@ -1515,25 +1674,15 @@ export default function EditorArea({
         const currentIdx = i;
         if (editingBlockIndex === currentIdx && !note.isLocked) {
           renderedElements.push(
-            <div key={`edit-quote-${currentIdx}`} className="my-3 pl-4 border-l-4 border-blue-500/80 dark:border-zinc-700 w-full animate-fade-in">
+            <div key={`edit-quote-${currentIdx}`} className="my-3 pl-4 border-l-4 border-accent/40 w-full animate-fade-in">
               <input
                 type="text"
                 value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
+                onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
                 onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
+                onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
                 autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-sm text-slate-600 dark:text-zinc-400 font-mono py-0.5"
+                className="w-full bg-accent-soft rounded-lg px-2 py-0.5 border border-accent/40 outline-none text-sm text-fg-muted"
               />
             </div>
           );
@@ -1541,13 +1690,13 @@ export default function EditorArea({
           renderedElements.push(
             <blockquote
               key={`quote-${i}`}
-              onDoubleClick={() => {
+              onClick={() => {
                 if (!note.isLocked) {
                   setEditingBlockIndex(currentIdx);
                   setEditingBlockContent(line);
                 }
               }}
-              className={`border-l-4 border-blue-500/80 dark:border-zinc-700 pl-4 py-1 italic my-3 text-slate-600 dark:text-zinc-400 rounded-r-lg hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
+              className={`border-l-4 border-accent/40 pl-4 py-1 italic my-3 text-fg-muted rounded-r-lg hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
             >
               {renderInlineMarkdown(line.substring(2))}
             </blockquote>
@@ -1557,63 +1706,88 @@ export default function EditorArea({
         continue;
       }
 
-      // 8. TEXT AND PARAGRAPHS
-      if (line.trim() === "") {
-        renderedElements.push(<div key={`empty-${i}`} className="h-2"></div>);
+      // 8. TEXT AND PARAGRAPHS (including clickable empty lines)
+      const currentIdx = i;
+      if (editingBlockIndex === currentIdx && !note.isLocked) {
+        renderedElements.push(
+          <div key={`edit-p-${currentIdx}`} className="my-1.5 w-full animate-fade-in">
+            <input
+              type="text"
+              value={editingBlockContent}
+              onChange={(e) => handleUnifiedBlockChange(e.target.value, currentIdx, lines)}
+              onBlur={() => setEditingBlockIndex(null)}
+              onKeyDown={(e) => handleUnifiedBlockKeyDown(e, currentIdx, lines)}
+              placeholder="Write something, or type '/' for commands & blocks..."
+              autoFocus
+              className="w-full bg-accent-soft rounded-lg px-2 py-1 border border-accent/40 outline-none text-[14.5px] text-fg placeholder:text-fg-subtle"
+            />
+          </div>
+        );
+      } else if (line.trim() === "") {
+        renderedElements.push(
+          <div
+            key={`empty-${i}`}
+            onClick={() => {
+              if (!note.isLocked) {
+                setEditingBlockIndex(currentIdx);
+                setEditingBlockContent("");
+              }
+            }}
+            className={`h-6 my-0.5 rounded-lg hover:bg-hover transition-colors flex items-center px-2 ${!note.isLocked ? "cursor-text" : ""}`}
+          >
+            {lines.length === 1 && !note.isLocked && (
+              <span className="text-sm text-fg-subtle italic select-none">
+                Click here to start writing, or type &apos;/&apos; for blocks...
+              </span>
+            )}
+          </div>
+        );
       } else {
-        const currentIdx = i;
-        if (editingBlockIndex === currentIdx && !note.isLocked) {
-          renderedElements.push(
-            <div key={`edit-p-${currentIdx}`} className="my-2 w-full animate-fade-in">
-              <textarea
-                value={editingBlockContent}
-                onChange={(e) => {
-                  setEditingBlockContent(e.target.value);
-                  const updatedLines = [...lines];
-                  updatedLines[currentIdx] = e.target.value;
-                  handleContentChange(updatedLines.join("\n"), true);
-                }}
-                onBlur={() => setEditingBlockIndex(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    setEditingBlockIndex(null);
-                  }
-                }}
-                autoFocus
-                className="w-full bg-transparent border-b border-blue-500 outline-none text-[14px] text-slate-800 dark:text-zinc-300 font-mono py-1 resize-none h-16"
-              />
-            </div>
-          );
-        } else {
-          renderedElements.push(
-            <p
-              key={`p-${i}`}
-              onDoubleClick={() => {
-                if (!note.isLocked) {
-                  setEditingBlockIndex(currentIdx);
-                  setEditingBlockContent(line);
-                }
-              }}
-              className={`text-[14px] text-slate-800 dark:text-zinc-300 my-2 leading-relaxed rounded-lg px-1 hover:bg-slate-100/10 dark:hover:bg-zinc-800/10 transition-colors ${!note.isLocked ? "cursor-pointer" : ""}`}
-            >
-              {renderInlineMarkdown(line)}
-            </p>
-          );
-        }
+        renderedElements.push(
+          <p
+            key={`p-${i}`}
+            onClick={() => {
+              if (!note.isLocked) {
+                setEditingBlockIndex(currentIdx);
+                setEditingBlockContent(line);
+              }
+            }}
+            className={`text-[14.5px] text-fg my-1.5 leading-relaxed rounded-lg px-1.5 py-0.5 hover:bg-hover transition-colors ${!note.isLocked ? "cursor-text" : ""}`}
+          >
+            {renderInlineMarkdown(line)}
+          </p>
+        );
       }
       i++;
     }
 
     return (
-      <div className="markdown-body p-6 min-h-full">
+      <div
+        className="markdown-body px-4 py-6 sm:px-6 md:py-10 min-h-full max-w-[720px] w-full mx-auto flex flex-col"
+        onClick={(e) => {
+          // If clicking in the bottom empty space of the canvas, append/focus last line
+          if (e.target === e.currentTarget && !note.isLocked) {
+            const lastIdx = lines.length - 1;
+            if (lines[lastIdx]?.trim() === "") {
+              setEditingBlockIndex(lastIdx);
+              setEditingBlockContent("");
+            } else {
+              const updatedLines = [...lines, ""];
+              const joined = updatedLines.join("\n");
+              setLocalContent(joined);
+              handleContentChange(joined, true);
+              setEditingBlockIndex(updatedLines.length - 1);
+              setEditingBlockContent("");
+            }
+          }
+        }}
+      >
         {renderedElements}
       </div>
     );
   };
 
-  const fontSizeClass = 
-    settings?.fontSize === "xs" ? "text-xs" :
+  const fontSizeClass =
     settings?.fontSize === "sm" ? "text-sm" :
     settings?.fontSize === "lg" ? "text-lg" :
     settings?.fontSize === "xl" ? "text-xl" :
@@ -1629,97 +1803,80 @@ export default function EditorArea({
   return (
     <div
       id="editor-pane-container"
-      className="flex-grow h-full flex flex-col relative select-text transition-colors duration-200 w-full bg-bg-primary text-text-primary"
+      className="flex-grow h-full min-w-0 flex flex-col relative select-text w-full bg-surface text-fg"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Drag & Drop Overlay */}
       {isDraggingOver && (
-        <div className="absolute inset-0 z-40 bg-blue-500/10 dark:bg-indigo-500/10 border-4 border-dashed border-blue-500 dark:border-indigo-400 flex flex-col items-center justify-center backdrop-blur-xs pointer-events-none">
-          <div className="p-4 rounded-full bg-white dark:bg-zinc-900 shadow-xl border border-blue-100 dark:border-zinc-800 text-blue-500 mb-3 animate-bounce">
-            <Paperclip size={28} />
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-accent-soft border-2 border-dashed border-accent pointer-events-none">
+          <div className="p-3 rounded-full bg-panel shadow-pop border border-line text-accent mb-3">
+            <Paperclip size={24} />
           </div>
-          <p className="font-display font-semibold text-sm text-slate-900 dark:text-zinc-100">
-            Drop file to embed in Note
-          </p>
-          <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
-            Accepting images, Excel sheets, and documents
-          </p>
+          <p className="font-semibold text-[14px] text-fg">Drop file to embed in note</p>
+          <p className="text-[12px] text-fg-muted mt-1">Images, spreadsheets and documents</p>
         </div>
       )}
 
       {/* Top Header Controls Bar */}
       {!isFocusMode && (
-        <div className={`px-4 py-2 border-b flex flex-col gap-1.5 flex-shrink-0 select-none ${
-          theme === "dark" ? "border-zinc-800/80 bg-zinc-950/20" : "border-slate-200/60 bg-slate-50/50"
-        }`}>
-          {/* Row 1: Title, Status, Auto-save state AND Right Action buttons */}
-          <div className="flex items-center justify-between w-full flex-nowrap gap-2 min-w-0">
-            <div className="flex items-center gap-2 min-w-0 flex-grow">
-              <input
-                id="active-note-title-input"
-                type="text"
-                value={note.title}
-                onChange={(e) => onUpdateNote({ ...note, title: e.target.value, updatedAt: new Date().toISOString() })}
-                onBlur={(e) => {
-                  if (!e.target.value.trim()) {
-                    onUpdateNote({ ...note, title: "Untitled Note", updatedAt: new Date().toISOString() });
-                  }
-                }}
-                className="font-display font-semibold text-base border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100 placeholder-slate-400 w-0 flex-grow min-w-[85px] sm:max-w-md truncate"
-                placeholder="Untitled Note"
-                readOnly={note.isLocked}
-              />
+        <div className="flex flex-col flex-shrink-0 select-none border-b border-line bg-surface">
+          {/* Action bar (48px) */}
+          <div className="flex h-12 w-full min-w-0 flex-nowrap items-center justify-between gap-2 px-3 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2 text-[12px] text-fg-muted">
+              {extras?.onBack && (
+                <IconButton label="Back to notes" className="md:hidden max-md:!h-10 max-md:!w-10" onClick={extras.onBack}>
+                  <ArrowLeft size={16} />
+                </IconButton>
+              )}
+              <span className="truncate">{folderName}</span>
+              {encrypted && <Badge tone="success" className="gap-1"><ShieldCheck size={10} />Encrypted</Badge>}
+              {note.isLocked && (
+                <Badge tone="accent" className="gap-1"><Lock size={10} />Locked</Badge>
+              )}
+              {note.isTrashed && <Badge tone="danger">In trash</Badge>}
+              {note.isArchived && !note.isTrashed && <Badge>Archived</Badge>}
             </div>
 
             {/* Right Action buttons */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-                            {/* Status Dropdown Pill grouped directly with the heading */}
+            <div className="flex items-center gap-1 flex-shrink-0">
               {!note.isTrashed && !note.isArchived && (
                 <div className="relative shrink-0" ref={statusDropdownRef}>
                   <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={showStatusDropdown}
                     onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                      note.status === "Published"
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-                        : note.status === "In Review"
-                        ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
-                        : "bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-zinc-400"
-                    }`}
+                    className={cn(
+                      "flex h-8 items-center gap-1.5 rounded-md border border-line px-2 text-[12px] font-medium cursor-pointer transition-colors hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent",
+                      note.status === "Published" ? "text-success" : note.status === "In Review" ? "text-warning" : "text-fg-muted",
+                    )}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${
-                      note.status === "Published"
-                        ? "bg-emerald-500"
-                        : note.status === "In Review"
-                        ? "bg-amber-500"
-                        : "bg-slate-400 dark:bg-zinc-500"
+                      note.status === "Published" ? "bg-success" : note.status === "In Review" ? "bg-warning" : "bg-fg-subtle"
                     }`}></span>
                     <span>{note.status || "Draft"}</span>
-                    <ChevronDown size={10} className="opacity-60 shrink-0" />
+                    <ChevronDown size={11} className="shrink-0 opacity-70" />
                   </button>
 
                   {showStatusDropdown && (
-                    <div className={`absolute left-0 mt-1.5 w-36 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
-                      theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
-                    }`}>
+                    <div role="menu" className="absolute right-0 mt-1.5 w-40 rounded-lg shadow-pop border border-line bg-raised p-1 z-50 flex flex-col text-fg">
                       {(["Draft", "In Review", "Published"] as const).map((status) => (
                         <button
                           key={status}
+                          type="button"
+                          role="menuitem"
                           onClick={() => {
                             handleUpdateStatus(status);
                             setShowStatusDropdown(false);
                           }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${
-                            note.status === status ? "font-semibold text-blue-500" : ""
+                          className={`w-full min-h-9 text-left px-2 rounded-md text-[13px] transition-colors hover:bg-hover flex items-center gap-2 cursor-pointer focus-visible:outline-2 focus-visible:outline-accent ${
+                            note.status === status ? "font-medium text-accent" : ""
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${
-                            status === "Published"
-                              ? "bg-emerald-500"
-                              : status === "In Review"
-                              ? "bg-amber-500"
-                              : "bg-slate-400 dark:bg-zinc-500"
+                            status === "Published" ? "bg-success" : status === "In Review" ? "bg-warning" : "bg-fg-subtle"
                           }`}></span>
                           <span>{status}</span>
                         </button>
@@ -1730,200 +1887,107 @@ export default function EditorArea({
               )}
               {/* Clipboard feedback indicator */}
               {copyFeedback && (
-                <span className="text-[10px] text-emerald-500 font-medium font-mono animate-fade-in hidden sm:inline">
+                <span className="text-[12px] text-success font-medium motion-safe:animate-fade-in hidden sm:inline" role="status">
                   Link copied!
                 </span>
               )}
 
-              {/* View Mode controls - Desktop only */}
-              <div className="hidden md:flex items-center border border-slate-200/80 dark:border-zinc-800 rounded-xl overflow-hidden p-0.5 bg-slate-100/60 dark:bg-zinc-950/40">
-                <button
-                  id="editor-edit-mode-btn"
-                  onClick={() => setViewMode("edit")}
-                  title="Edit Markdown"
-                  className={`p-1.5 rounded-lg text-xs transition-all flex items-center gap-1 ${
-                    viewMode === "edit"
-                      ? "bg-white dark:bg-zinc-800 text-blue-500 dark:text-white shadow-xs font-semibold"
-                      : "text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200"
-                  } cursor-pointer`}
-                >
-                  <Edit3 size={13} />
-                </button>
-                <button
-                  id="editor-split-mode-btn"
-                  onClick={() => setViewMode("split")}
-                  title="Split View"
-                  className={`p-1.5 rounded-lg text-xs transition-all flex items-center gap-1 ${
-                    viewMode === "split"
-                      ? "bg-white dark:bg-zinc-800 text-blue-500 dark:text-white shadow-xs font-semibold"
-                      : "text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200"
-                  } cursor-pointer`}
-                >
-                  <Columns size={13} />
-                </button>
-                <button
-                  id="editor-preview-mode-btn"
-                  onClick={() => setViewMode("preview")}
-                  title="Rich Preview"
-                  className={`p-1.5 rounded-lg text-xs transition-all flex items-center gap-1 ${
-                    viewMode === "preview"
-                      ? "bg-white dark:bg-zinc-800 text-blue-500 dark:text-white shadow-xs font-semibold"
-                      : "text-slate-400 hover:text-slate-800 dark:hover:text-zinc-200"
-                  } cursor-pointer`}
-                >
-                  <Eye size={13} />
-                </button>
-              </div>
-
               {/* Version History - Desktop only */}
-              <button
+              <IconButton
                 id="version-history-btn"
+                label="Version history"
+                aria-pressed={showHistory}
                 onClick={() => setShowHistory(!showHistory)}
-                title="Version History"
-                className={`hidden md:block p-2 rounded-xl border transition-colors ${
-                  showHistory
-                    ? "bg-blue-50 text-blue-500 border-blue-200 dark:bg-zinc-800 dark:text-white"
-                    : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
-                } cursor-pointer`}
+                className={cn("hidden md:inline-flex", showHistory && "!bg-accent-soft !text-accent")}
               >
-                <History size={14} />
-              </button>
+                <History size={15} />
+              </IconButton>
 
               {/* Find/Search within Note - Desktop only */}
-              <button
+              <IconButton
+                label="Find in note"
+                aria-pressed={showFindBar}
                 onClick={() => {
                   const next = !showFindBar;
                   setShowFindBar(next);
                   if (!next) setFindQuery("");
                 }}
-                title="Find text in note"
-                className={`hidden md:block p-2 rounded-xl border transition-colors cursor-pointer ${
-                  showFindBar
-                    ? "bg-blue-50 text-blue-500 border-blue-200 dark:bg-zinc-800 dark:text-white"
-                    : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
-                }`}
+                className={cn("hidden md:inline-flex", showFindBar && "!bg-accent-soft !text-accent")}
               >
-                <Search size={14} />
-              </button>
+                <Search size={15} />
+              </IconButton>
 
               {/* Text to Speech button */}
-              <button
+              <IconButton
+                label={isSpeaking ? "Stop reading aloud" : "Read note aloud"}
+                aria-pressed={isSpeaking}
                 onClick={handleToggleSpeak}
-                title={isSpeaking ? "Stop Reading Aloud" : "Read Note Aloud (TTS)"}
-                className={`p-2 rounded-xl border cursor-pointer transition-all ${
-                  isSpeaking
-                    ? "bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-950/20 dark:border-rose-900/50 dark:text-rose-400"
-                    : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
-                }`}
+                className={cn(isSpeaking && "!bg-danger-soft !text-danger")}
               >
-                {isSpeaking ? <VolumeX size={14} className="animate-pulse" /> : <Volume2 size={14} />}
-              </button>
+                {isSpeaking ? <VolumeX size={15} className="motion-safe:animate-pulse" /> : <Volume2 size={15} />}
+              </IconButton>
 
               {/* Focus Mode button - Desktop only */}
-              <button
+              <IconButton
                 id="focus-mode-btn"
+                label="Focus mode (Alt+F)"
                 onClick={() => setIsFocusMode(!isFocusMode)}
-                title="Focus Writing Mode (Alt+F)"
-                className="hidden md:block p-2 rounded-xl border bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white cursor-pointer"
+                className="hidden md:inline-flex"
               >
-                <Maximize2 size={14} />
-              </button>
+                <Maximize2 size={15} />
+              </IconButton>
 
               {/* Launch AI panel trigger if closed */}
               {!isAiPanelOpen && (
-                <button
+                <Button
                   id="ai-panel-open-editor-btn"
+                  variant="primary"
+                  size="md"
                   onClick={onOpenAiAssistant}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                  leadingIcon={<Sparkles size={13} />}
+                  className="max-md:!px-0 max-md:w-10 max-md:h-10"
+                  aria-label="Ask AI"
                 >
-                  <Sparkles size={13} />
                   <span className="hidden sm:inline">Ask AI</span>
-                </button>
+                </Button>
               )}
 
               {/* More Actions (⋮) Dropdown */}
               <div ref={moreMenuRef} className="relative">
-                <button
+                <IconButton
                   id="more-actions-trigger"
+                  label="More actions"
+                  aria-haspopup="menu"
+                  aria-expanded={showMoreMenu}
+                  className={cn("max-md:!h-10 max-md:!w-10", showMoreMenu && "!bg-active !text-fg")}
                   onClick={() => {
                     setShowMoreMenu(!showMoreMenu);
                     setShowMoveSubmenu(false);
                     setShowCopySubmenu(false);
                     setShowFolderSubmenu(false);
                   }}
-                  title="More Actions"
-                  className={`p-2 rounded-xl border transition-colors ${
-                    showMoreMenu
-                      ? "bg-slate-100 dark:bg-zinc-800"
-                      : "bg-white border-slate-200 dark:bg-zinc-900 dark:border-zinc-800 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
-                  } cursor-pointer`}
                 >
-                  <MoreVertical size={14} />
-                </button>
+                  <MoreVertical size={15} />
+                </IconButton>
 
                 {showMoreMenu && (
                   <div
                     id="more-actions-dropdown"
-                    className={`absolute right-0 mt-2 w-56 rounded-xl shadow-xl border p-1 z-50 flex flex-col max-h-[75vh] overflow-y-auto scrollbar-none ${
+                    className={`absolute right-0 mt-2 w-56 rounded-lg shadow-pop border p-1 z-50 flex flex-col max-h-[75vh] overflow-y-auto scrollbar-none ${
                       theme === "dark"
-                        ? "bg-zinc-950 border-zinc-800 text-zinc-300"
-                        : "bg-white border-slate-200 text-slate-700"
+                        ? "bg-panel border-line text-fg"
+                        : "bg-panel border-line text-fg"
                     }`}
                   >
                     {/* Mobile Only Actions Group */}
                     {isMobile && (
                       <>
-                        <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-3 py-1.5">
-                          Editor View
-                        </div>
-                        <div className="flex gap-1 px-2 pb-2 justify-between">
-                          <button
-                            onClick={() => {
-                              setViewMode("edit");
-                              setShowMoreMenu(false);
-                            }}
-                            className={`px-2 py-1 rounded-md text-[10px] text-center flex-1 font-semibold cursor-pointer ${
-                              viewMode === "edit"
-                                ? "bg-blue-500 text-white"
-                                : "bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
-                            }`}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              setViewMode("split");
-                              setShowMoreMenu(false);
-                            }}
-                            className={`px-2 py-1 rounded-md text-[10px] text-center flex-1 font-semibold cursor-pointer ${
-                              viewMode === "split"
-                                ? "bg-blue-500 text-white"
-                                : "bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
-                            }`}
-                          >
-                            Split
-                          </button>
-                          <button
-                            onClick={() => {
-                              setViewMode("preview");
-                              setShowMoreMenu(false);
-                            }}
-                            className={`px-2 py-1 rounded-md text-[10px] text-center flex-1 font-semibold cursor-pointer ${
-                              viewMode === "preview"
-                                ? "bg-blue-500 text-white"
-                                : "bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
-                            }`}
-                          >
-                            Preview
-                          </button>
-                        </div>
-
                         <button
                           onClick={() => {
                             setShowHistory(!showHistory);
                             setShowMoreMenu(false);
                           }}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                         >
                           <History size={13} />
                           <span>Version History</span>
@@ -1935,15 +1999,15 @@ export default function EditorArea({
                             setFindQuery("");
                             setShowMoreMenu(false);
                           }}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                         >
                           <Search size={13} />
                           <span>Find in Note</span>
                         </button>
 
                         {!note.isTrashed && !note.isArchived && (
-                          <div className="flex flex-col gap-0.5 border-t border-slate-100 dark:border-zinc-800/80 pt-1.5 mt-1.5">
-                            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-3 py-1">
+                          <div className="flex flex-col gap-0.5 border-t border-line pt-1.5 mt-1.5">
+                            <div className="text-[10px] font-semibold text-fg-subtle uppercase px-3 py-1">
                               Publishing
                             </div>
                             {note.status === "Published" ? (
@@ -1952,7 +2016,7 @@ export default function EditorArea({
                                   handleUpdateStatus("Draft");
                                   setShowMoreMenu(false);
                                 }}
-                                className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                               >
                                 <Eye size={13} />
                                 <span>Revert to Draft</span>
@@ -1964,7 +2028,7 @@ export default function EditorArea({
                                     handleUpdateStatus("In Review");
                                     setShowMoreMenu(false);
                                   }}
-                                  className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                  className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                                 >
                                   <Eye size={13} />
                                   <span>Submit for Review</span>
@@ -1974,7 +2038,7 @@ export default function EditorArea({
                                     handleUpdateStatus("Published");
                                     setShowMoreMenu(false);
                                   }}
-                                  className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-semibold"
+                                  className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover text-success font-semibold"
                                 >
                                   <Eye size={13} />
                                   <span>Publish Live</span>
@@ -1984,44 +2048,55 @@ export default function EditorArea({
                           </div>
                         )}
 
-                        <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1.5"></div>
+                        <div className="h-px bg-hover my-1.5"></div>
                       </>
                     )}
 
                     {/* Pin action */}
                     <button
                       onClick={handleTogglePin}
-                    className={`flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 ${
-                      note.isPinned ? "text-amber-500 font-medium animate-pulse" : ""
+                    className={`flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover ${
+                      note.isPinned ? "text-warning font-medium animate-pulse" : ""
                     }`}
                   >
-                    <Star size={13} className={note.isPinned ? "fill-amber-500/20" : ""} />
+                    <Star size={13} className={note.isPinned ? "fill-current" : ""} />
                     <span>{note.isPinned ? "Unpin Note" : "Pin Note"}</span>
                   </button>
 
                   {/* Favorite action */}
                   <button
                     onClick={handleToggleFavorite}
-                    className={`flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 ${
-                      note.isFavorite ? "text-yellow-500 font-medium" : ""
+                    className={`flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover ${
+                      note.isFavorite ? "text-warning font-medium" : ""
                     }`}
                   >
-                    <Star size={13} className={note.isFavorite ? "fill-yellow-500/20" : ""} />
+                    <Star size={13} className={note.isFavorite ? "fill-current" : ""} />
                     <span>{note.isFavorite ? "Remove Favorite" : "Favorite Note"}</span>
                   </button>
 
                   {/* Lock action */}
                   <button
                     onClick={handleToggleLock}
-                    className={`flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 ${
-                      note.isLocked ? "text-blue-500 font-medium" : ""
+                    className={`flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover ${
+                      note.isLocked ? "text-accent font-medium" : ""
                     }`}
                   >
                     {note.isLocked ? <Unlock size={13} /> : <Lock size={13} />}
                     <span>{note.isLocked ? "Unlock Editor" : "Lock Note (Read-Only)"}</span>
                   </button>
 
-                  <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1"></div>
+                  {/* Opt-in encryption (password, no recovery) */}
+                  {!encrypted && !note.isTrashed && (
+                    <button
+                      onClick={() => { setShowMoreMenu(false); setEncryptOpen(true); }}
+                      className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
+                    >
+                      <ShieldCheck size={13} />
+                      <span>Encrypt this note…</span>
+                    </button>
+                  )}
+
+                  <div className="h-px bg-hover my-1"></div>
 
                   {/* Move & Copy workspace commands */}
                   {workspaces.length > 1 && (
@@ -2032,7 +2107,7 @@ export default function EditorArea({
                             setShowMoveSubmenu(!showMoveSubmenu);
                             setShowCopySubmenu(false);
                           }}
-                          className="flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                          className="flex items-center justify-between w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                         >
                           <span className="flex items-center gap-2.5">
                             <FolderOpen size={13} />
@@ -2042,10 +2117,10 @@ export default function EditorArea({
                         </button>
                         
                         {showMoveSubmenu && (
-                          <div className={`absolute right-full top-0 mr-1 w-48 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
-                            theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
+                          <div className={`absolute right-full top-0 mr-1 w-48 rounded-lg shadow-pop border p-1 z-50 flex flex-col ${
+                            theme === "dark" ? "bg-panel border-line text-fg" : "bg-panel border-line text-fg"
                           }`}>
-                            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-2 py-1 border-b border-slate-100 dark:border-zinc-800 mb-1">
+                            <div className="text-[10px] font-semibold text-fg-subtle uppercase px-2 py-1 border-b border-line mb-1">
                               Select Workspace
                             </div>
                             {workspaces.filter(w => w.id !== activeWorkspaceId).map(w => (
@@ -2056,7 +2131,7 @@ export default function EditorArea({
                                   setShowMoveSubmenu(false);
                                   setShowMoreMenu(false);
                                 }}
-                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 truncate"
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-hover truncate"
                               >
                                 {w.icon} {w.name}
                               </button>
@@ -2071,7 +2146,7 @@ export default function EditorArea({
                             setShowCopySubmenu(!showCopySubmenu);
                             setShowMoveSubmenu(false);
                           }}
-                          className="flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                          className="flex items-center justify-between w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                         >
                           <span className="flex items-center gap-2.5">
                             <Copy size={13} />
@@ -2081,10 +2156,10 @@ export default function EditorArea({
                         </button>
 
                         {showCopySubmenu && (
-                          <div className={`absolute right-full top-0 mr-1 w-48 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
-                            theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
+                          <div className={`absolute right-full top-0 mr-1 w-48 rounded-lg shadow-pop border p-1 z-50 flex flex-col ${
+                            theme === "dark" ? "bg-panel border-line text-fg" : "bg-panel border-line text-fg"
                           }`}>
-                            <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-2 py-1 border-b border-slate-100 dark:border-zinc-800 mb-1">
+                            <div className="text-[10px] font-semibold text-fg-subtle uppercase px-2 py-1 border-b border-line mb-1">
                               Select Workspace
                             </div>
                             {workspaces.filter(w => w.id !== activeWorkspaceId).map(w => (
@@ -2095,7 +2170,7 @@ export default function EditorArea({
                                   setShowCopySubmenu(false);
                                   setShowMoreMenu(false);
                                 }}
-                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 truncate"
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-hover truncate"
                               >
                                 {w.icon} {w.name}
                               </button>
@@ -2115,20 +2190,20 @@ export default function EditorArea({
                           setShowMoveSubmenu(false);
                           setShowCopySubmenu(false);
                         }}
-                        className="flex items-center justify-between w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                        className="flex items-center justify-between w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                       >
                         <span className="flex items-center gap-2.5">
-                          <FolderOpen size={13} className="text-emerald-500" />
+                          <FolderOpen size={13} className="text-success" />
                           <span>Move to Folder</span>
                         </span>
                         <ChevronRight size={12} />
                       </button>
 
                       {showFolderSubmenu && (
-                        <div className={`absolute right-full top-0 mr-1 w-48 rounded-xl shadow-xl border p-1 z-50 flex flex-col ${
-                          theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
+                        <div className={`absolute right-full top-0 mr-1 w-48 rounded-lg shadow-pop border p-1 z-50 flex flex-col ${
+                          theme === "dark" ? "bg-panel border-line text-fg" : "bg-panel border-line text-fg"
                         }`}>
-                          <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-2 py-1 border-b border-slate-100 dark:border-zinc-800 mb-1">
+                          <div className="text-[10px] font-semibold text-fg-subtle uppercase px-2 py-1 border-b border-line mb-1">
                             Select Folder
                           </div>
                           <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 no-scrollbar">
@@ -2140,8 +2215,8 @@ export default function EditorArea({
                                   setShowFolderSubmenu(false);
                                   setShowMoreMenu(false);
                                 }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 truncate ${
-                                  note.folder === f.id ? "text-emerald-500 font-semibold" : ""
+                                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-hover truncate ${
+                                  note.folder === f.id ? "text-success font-semibold" : ""
                                 }`}
                               >
                                 {f.icon || "📁"} {f.name}
@@ -2160,7 +2235,7 @@ export default function EditorArea({
                         onDuplicateNote(note.id);
                         setShowMoreMenu(false);
                       }}
-                      className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                      className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                     >
                       <Copy size={13} />
                       <span>Duplicate Note</span>
@@ -2174,19 +2249,19 @@ export default function EditorArea({
                         onArchiveNote(note.id);
                         setShowMoreMenu(false);
                       }}
-                      className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                      className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                     >
                       <Archive size={13} />
                       <span>{note.isArchived ? "Unarchive Note" : "Archive Note"}</span>
                     </button>
                   )}
 
-                  <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1"></div>
+                  <div className="h-px bg-hover my-1"></div>
 
                   {/* Share action */}
                   <button
                     onClick={handleShare}
-                    className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                    className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                   >
                     <Share2 size={13} />
                     <span>Copy Share Link</span>
@@ -2195,38 +2270,38 @@ export default function EditorArea({
                   {/* Print action */}
                   <button
                     onClick={handlePrint}
-                    className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                    className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover"
                   >
                     <Printer size={13} />
                     <span>Print Document</span>
                   </button>
 
                   {/* Export format triggers */}
-                  <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-3 py-1.5 border-t border-slate-100 dark:border-zinc-800">
+                  <div className="text-[10px] font-semibold text-fg-subtle uppercase px-3 py-1.5 border-t border-line">
                     Export Format
                   </div>
                   <div className="flex gap-1 px-2 pb-1.5 justify-between">
                     <button
                       onClick={() => handleExport("markdown")}
-                      className="px-2 py-1 rounded-md bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-[10px] text-center flex-1 font-semibold cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-hover hover:bg-active text-[10px] text-center flex-1 font-semibold cursor-pointer"
                     >
                       MD
                     </button>
                     <button
                       onClick={() => handleExport("html")}
-                      className="px-2 py-1 rounded-md bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-[10px] text-center flex-1 font-semibold cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-hover hover:bg-active text-[10px] text-center flex-1 font-semibold cursor-pointer"
                     >
                       HTML
                     </button>
                     <button
                       onClick={() => handleExport("json")}
-                      className="px-2 py-1 rounded-md bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-[10px] text-center flex-1 font-semibold cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-hover hover:bg-active text-[10px] text-center flex-1 font-semibold cursor-pointer"
                     >
                       JSON
                     </button>
                   </div>
 
-                  <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1"></div>
+                  <div className="h-px bg-hover my-1"></div>
 
                   {/* Delete Note / Restore */}
                   {note.isTrashed ? (
@@ -2237,7 +2312,7 @@ export default function EditorArea({
                             onRestoreNote(note.id);
                             setShowMoreMenu(false);
                           }}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-medium cursor-pointer"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover text-success font-medium cursor-pointer"
                         >
                           <RotateCcw size={13} />
                           <span>Restore Note</span>
@@ -2251,7 +2326,7 @@ export default function EditorArea({
                               setShowMoreMenu(false);
                             }
                           }}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/20 text-rose-600 dark:text-rose-400 font-medium cursor-pointer"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-danger-soft text-danger font-medium cursor-pointer"
                         >
                           <Trash2 size={13} />
                           <span>Delete Permanently</span>
@@ -2265,7 +2340,7 @@ export default function EditorArea({
                           onDeleteNote(note.id);
                           setShowMoreMenu(false);
                         }}
-                        className="flex items-center gap-2.5 w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 text-rose-600 dark:text-rose-400 font-medium cursor-pointer"
+                        className="flex items-center gap-2.5 w-full text-left px-3 py-2 max-md:min-h-10 rounded-lg text-xs transition-colors hover:bg-hover text-danger font-medium cursor-pointer"
                       >
                         <Trash2 size={13} />
                         <span>Move to Trash</span>
@@ -2278,21 +2353,48 @@ export default function EditorArea({
           </div>
         </div>
 
-          {/* Row 2: Tags list (Clean single-row display below the title & status) */}
-          <div ref={tagContainerRef} className="flex items-center gap-1.5 flex-nowrap overflow-x-auto scrollbar-none w-full mt-1 border-t border-slate-100 dark:border-zinc-800/80 pt-2 bg-transparent select-text">
-            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-1 mr-1 shrink-0">
-              <Tag size={10} />
-              Tags:
+          {/* Title + properties column */}
+          <div className="mx-auto w-full max-w-[720px] px-4 sm:px-6 pt-4 pb-3 flex flex-col gap-2 min-w-0">
+            <input
+              id="active-note-title-input"
+              type="text"
+              aria-label="Note title"
+              value={note.title}
+              onChange={(e) => onUpdateNote({ ...note, title: e.target.value, updatedAt: new Date().toISOString() })}
+              onBlur={(e) => {
+                if (!e.target.value.trim()) {
+                  onUpdateNote({ ...note, title: "Untitled Note", updatedAt: new Date().toISOString() });
+                }
+              }}
+              className="w-full border-none bg-transparent p-0 text-[26px] font-semibold leading-tight text-fg outline-none placeholder:text-fg-subtle focus:ring-0 truncate"
+              placeholder="Untitled Note"
+              readOnly={note.isLocked}
+            />
+
+            {/* Property row */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
+              <span className="inline-flex items-center gap-1"><FolderOpen size={12} className="text-fg-subtle" />{folderName}</span>
+              <span aria-hidden className="h-3 w-px bg-line" />
+              <span>Edited {new Date(note.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}, {new Date(note.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              <span aria-hidden className="h-3 w-px bg-line" />
+              <span className="tabular-nums">{note.wordCount} words</span>
+              <span className="tabular-nums">{note.readingTime} min read</span>
+            </div>
+
+          <div ref={tagContainerRef} className="flex items-center gap-1.5 flex-nowrap overflow-x-auto scrollbar-none w-full select-text">
+            <span className="text-[12px] font-medium text-fg-subtle flex items-center gap-1 mr-1 shrink-0">
+              <Tag size={12} />
+              Tags
             </span>
-            
+
             {note.tags.length === 0 ? (
-              <span className="text-[10px] text-slate-400 dark:text-zinc-500 italic mr-1 shrink-0">No tags yet</span>
+              <span className="text-[12px] text-fg-subtle mr-1 shrink-0">None yet</span>
             ) : (
               <>
                 {((isMobile && !isTagsExpanded) ? note.tags.slice(0, 2) : note.tags).map((tag) => (
                   <span
                     key={tag}
-                    className="group flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300 select-none font-mono shrink-0"
+                    className="group flex items-center gap-1 text-[12px] px-2 h-6 rounded-full bg-hover hover:bg-active text-fg-muted select-none shrink-0"
                   >
                     {tag}
                     {!note.isLocked && (
@@ -2301,8 +2403,9 @@ export default function EditorArea({
                           const updatedTags = note.tags.filter((t) => t !== tag);
                           onUpdateNote({ ...note, tags: updatedTags, updatedAt: new Date().toISOString() });
                         }}
-                        className="opacity-60 hover:opacity-100 text-[11px] leading-none pl-0.5 cursor-pointer text-slate-400 dark:text-zinc-500"
+                        className="opacity-60 hover:opacity-100 text-[13px] leading-none pl-0.5 cursor-pointer text-fg-subtle focus-visible:outline-2 focus-visible:outline-accent rounded"
                         title="Remove tag"
+                        aria-label={`Remove tag ${tag}`}
                       >
                         ×
                       </button>
@@ -2323,7 +2426,7 @@ export default function EditorArea({
                       }, 50);
                     }}
                     title={note.tags.slice(2).join(", ")}
-                    className="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-500 border border-blue-500/15 font-mono font-semibold select-none shrink-0 cursor-pointer hover:bg-blue-500/25 active:scale-[0.98] transition-all"
+                    className="text-[12px] px-2 h-6 rounded-full bg-accent-soft text-accent font-medium select-none shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     +{note.tags.length - 2}
                   </button>
@@ -2352,38 +2455,39 @@ export default function EditorArea({
                 <input
                   type="text"
                   name="newTag"
-                  placeholder="+"
-                  className="text-[10px] px-1.5 py-0.5 rounded border border-dashed border-slate-300 dark:border-zinc-800 bg-transparent outline-none text-slate-500 dark:text-zinc-400 focus:border-solid focus:border-blue-400 max-w-[32px] text-center font-mono transition-colors"
+                  placeholder="+ tag"
+                  aria-label="Add tag"
+                  className="text-[12px] px-2 h-6 rounded-full border border-dashed border-line-strong bg-transparent outline-none text-fg-muted placeholder:text-fg-subtle focus:border-solid focus:border-accent w-16 focus:w-24 text-center transition-all"
                 />
               </form>
             )}
+          </div>
           </div>
         </div>
       )}
 
       {showFindBar && (
-        <div className={`px-4 py-2 border-b flex items-center justify-between text-xs gap-3 select-none ${
-          theme === "dark" ? "border-zinc-805 bg-zinc-950/40" : "border-slate-200 bg-slate-50"
-        }`}>
-          <div className="flex items-center gap-2 flex-grow">
-            <Search size={12} className="text-slate-400" />
-            <input
-              type="text"
-              placeholder="Find in note..."
-              value={findQuery}
-              onChange={(e) => setFindQuery(e.target.value)}
-              className="bg-transparent border-none outline-none focus:ring-0 text-xs w-full text-slate-800 dark:text-zinc-200"
-            />
-          </div>
-          <button
+        <div className="flex h-10 items-center gap-2 border-b border-line bg-panel px-3 sm:px-4 text-[13px] select-none">
+          <Search size={13} className="text-fg-subtle shrink-0" />
+          <input
+            type="text"
+            aria-label="Find in note"
+            autoFocus
+            placeholder="Find in note"
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            className="min-w-0 flex-grow bg-transparent border-none outline-none focus:ring-0 text-[13px] text-fg placeholder:text-fg-subtle"
+          />
+          <IconButton
+            size="sm"
+            label="Close find"
             onClick={() => {
               setShowFindBar(false);
               setFindQuery("");
             }}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-250 cursor-pointer"
           >
-            <X size={12} />
-          </button>
+            <X size={13} />
+          </IconButton>
         </div>
       )}
 
@@ -2392,168 +2496,173 @@ export default function EditorArea({
         <button
           id="exit-focus-mode-btn"
           onClick={() => setIsFocusMode(false)}
-          className="absolute top-4 right-4 z-20 flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs text-slate-600 dark:text-zinc-300 transition-all shadow-xs"
+          className="absolute top-3 right-3 z-20 flex items-center gap-1.5 h-9 px-3 rounded-md bg-panel border border-line hover:bg-hover text-[13px] text-fg-muted shadow-soft cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
         >
           <Minimize2 size={12} />
           <span>Exit Focus</span>
         </button>
       )}
 
-      {/* Formatting Toolbar */}
-      {viewMode !== "preview" && !isFocusMode && (
-        <div className={`px-4 py-1.5 border-b flex flex-row items-center gap-1 select-none overflow-x-auto scrollbar-none whitespace-nowrap md:flex-wrap md:overflow-visible md:whitespace-normal ${
-          theme === "dark" ? "border-zinc-800/50 bg-zinc-950/10" : "border-slate-100 bg-slate-50/20"
-        }`}>
-          {/* History Operations */}
-          <button
+      {/* Formatting Toolbar (legacy markdown editor only) */}
+      {!isFocusMode && !tiptapOn && !encrypted && (
+        <div
+          role="toolbar"
+          aria-label="Formatting"
+          className="flex h-11 shrink-0 select-none flex-row items-center gap-0.5 overflow-x-auto whitespace-nowrap border-b border-line bg-surface px-3 sm:px-4 scrollbar-none md:h-10"
+        >
+          <IconButton
+            label="Undo (Ctrl+Z)"
             onClick={handleUndo}
             disabled={undoStack.length === 0}
-            title="Undo (Ctrl+Z)"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer shrink-0"
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
           >
-            <Undo size={14} />
-          </button>
-          <button
+            <Undo size={15} />
+          </IconButton>
+          <IconButton
+            label="Redo (Ctrl+Y)"
             onClick={handleRedo}
             disabled={redoStack.length === 0}
-            title="Redo (Ctrl+Y)"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer shrink-0"
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
           >
-            <Redo size={14} />
-          </button>
-
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
-
-          {/* Text treatments */}
-          <button
+            <Redo size={15} />
+          </IconButton>
+          <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-line" />
+          <IconButton
+            label="Bold"
             onClick={() => toggleFormat("bold")}
-            title="Bold"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-              activeStyles.bold
-                ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
-                : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
-            }`}
+            aria-pressed={!!activeStyles.bold}
+            
+            className={cn("shrink-0 max-md:!h-10 max-md:!w-10", activeStyles.bold && "!bg-accent-soft !text-accent")}
           >
-            <Bold size={14} />
-          </button>
-          <button
+            <Bold size={15} />
+          </IconButton>
+          <IconButton
+            label="Italic"
             onClick={() => toggleFormat("italic")}
-            title="Italic"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-              activeStyles.italic
-                ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
-                : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
-            }`}
+            aria-pressed={!!activeStyles.italic}
+            
+            className={cn("shrink-0 max-md:!h-10 max-md:!w-10", activeStyles.italic && "!bg-accent-soft !text-accent")}
           >
-            <Italic size={14} />
-          </button>
-          <button
+            <Italic size={15} />
+          </IconButton>
+          <IconButton
+            label="Underline"
             onClick={() => toggleFormat("underline")}
-            title="Underline"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-              activeStyles.underline
-                ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
-                : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800"
-            }`}
+            aria-pressed={!!activeStyles.underline}
+            
+            className={cn("shrink-0 max-md:!h-10 max-md:!w-10", activeStyles.underline && "!bg-accent-soft !text-accent")}
           >
-            <Underline size={14} />
-          </button>
-          
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
+            <Underline size={15} />
+          </IconButton>
+          <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-line" />
+          <IconButton
+            label="Heading 1"
+            onClick={() => insertMarkdown("# ")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <Heading1 size={15} />
+          </IconButton>
+          <IconButton
+            label="Heading 2"
+            onClick={() => insertMarkdown("## ")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <Heading2 size={15} />
+          </IconButton>
+          <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-line" />
+          <IconButton
+            label="Bullet list"
+            onClick={() => insertMarkdown("- ")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <List size={15} />
+          </IconButton>
+          <IconButton
+            label="Numbered list"
+            onClick={() => insertMarkdown("1. ")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <ListOrdered size={15} />
+          </IconButton>
+          <IconButton
+            label="Checklist"
+            onClick={() => insertMarkdown("- [ ] ")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <CheckSquare size={15} />
+          </IconButton>
+          <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-line" />
+          <IconButton
+            label="Code block"
+            onClick={() => insertMarkdown("```typescript\n", "\n```")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <Code size={15} />
+          </IconButton>
+          <IconButton
+            label="Insert table"
+            onClick={() => insertMarkdown("| Header 1 | Header 2 |\n|---|---|\n| Value 1 | Value 2 |\n")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <TableIcon size={15} />
+          </IconButton>
+          <IconButton
+            label="Add link"
+            onClick={() => insertMarkdown("[Link Text](", ")")}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <Link size={15} />
+          </IconButton>
+          <IconButton
+            label="Insert image"
+            onClick={() => setIsImageModalOpen(true)}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <Image size={15} />
+          </IconButton>
+          <IconButton
+            label="Attach file"
+            onClick={handleFileUploadMock}
+            
+            className={"shrink-0 max-md:!h-10 max-md:!w-10"}
+          >
+            <Paperclip size={15} />
+          </IconButton>
 
-          {/* Block structures */}
-          <button onClick={() => insertMarkdown("# ")} title="Header 1" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <Heading1 size={14} />
-          </button>
-          <button onClick={() => insertMarkdown("## ")} title="Header 2" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <Heading2 size={14} />
-          </button>
-
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
-
-          {/* Lists */}
-          <button onClick={() => insertMarkdown("- ")} title="Bullet List" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <List size={14} />
-          </button>
-          <button onClick={() => insertMarkdown("1. ")} title="Numbered List" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <ListOrdered size={14} />
-          </button>
-          <button onClick={() => insertMarkdown("- [ ] ")} title="Checklist" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <CheckSquare size={14} />
-          </button>
-
-          <div className="w-px h-4 bg-slate-200 dark:bg-zinc-800 mx-1 shrink-0"></div>
-
-          {/* Blocks & Attachments */}
-          <button onClick={() => insertMarkdown("```typescript\n", "\n```")} title="Code Block" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <Code size={14} />
-          </button>
-          <button onClick={() => insertMarkdown("| Header 1 | Header 2 |\n|---|---|\n| Value 1 | Value 2 |\n")} title="Insert Table" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <TableIcon size={14} />
-          </button>
-          <button onClick={() => insertMarkdown("[Link Text](", ")")} title="Add Link" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <Link size={14} />
-          </button>
-          <button onClick={() => setIsImageModalOpen(true)} title="Insert/Upload Image" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <Image size={14} />
-          </button>
-          <button onClick={handleFileUploadMock} title="Attach Simulated File" className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-800 cursor-pointer shrink-0">
-            <Paperclip size={14} />
-          </button>
-
-          <span className="hidden md:inline-block md:ml-auto text-[10px] font-mono opacity-50 shrink-0">
-            Type <strong className="text-blue-500">/</strong> for blocks
+          <span className="hidden lg:inline-flex ml-auto shrink-0 items-center gap-1 text-[12px] text-fg-subtle">
+            Type <Kbd>/</Kbd> for blocks
           </span>
         </div>
       )}
 
-      {/* Main Workspace split */}
-      <div className="flex-grow flex flex-col md:flex-row min-h-0 relative">
-        
-        {/* Mobile sub-tab toggle for split view */}
-        {isMobile && viewMode === "split" && (
-          <div className={`px-4 py-2 border-b flex items-center justify-center gap-2 select-none md:hidden ${
-            theme === "dark" ? "border-zinc-805 bg-zinc-950/40" : "border-slate-200 bg-slate-50/50"
-          }`}>
-            <button
-              onClick={() => setMobileSubTab("edit")}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition-all cursor-pointer ${
-                mobileSubTab === "edit"
-                  ? "bg-blue-500 text-white shadow-xs"
-                  : "text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
-              }`}
-            >
-              Edit Markdown
-            </button>
-            <button
-              onClick={() => setMobileSubTab("preview")}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition-all cursor-pointer ${
-                mobileSubTab === "preview"
-                  ? "bg-blue-500 text-white shadow-xs"
-                  : "text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
-              }`}
-            >
-              Rich Preview
-            </button>
-          </div>
-        )}
+      {/* Unified Live Document Canvas */}
+      <div className="flex-grow flex flex-col min-h-0 relative">
+        <div
+          ref={previewContainerRef}
+          onScroll={handlePreviewScroll}
+          className="h-full w-full overflow-y-auto bg-surface relative"
+        >
+          {note.isLocked && (
+            <div className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-[720px] px-3 py-2 rounded-lg bg-accent-soft text-[13px] text-accent flex items-center gap-2 select-none">
+              <Lock size={12} className="flex-shrink-0" />
+              <span>This note is locked and read-only. Unlock it from the more actions menu to edit.</span>
+            </div>
+          )}
 
-        {/* EDIT PANE */}
-        {(viewMode === "edit" || (viewMode === "split" && (!isMobile || mobileSubTab === "edit"))) && (
-          <div
-            style={{ width: (viewMode === "split" && !isMobile) ? `${splitPercentage}%` : "100%", flexGrow: (viewMode === "split" && !isMobile) ? 0 : 1, flexShrink: 0 }}
-            className="h-full flex flex-col p-6 overflow-hidden relative"
-          >
-            {note.isLocked && (
-              <div className="mb-4 px-4 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2 select-none shadow-xs animate-fade-in">
-                <Lock size={12} className="flex-shrink-0" />
-                <span>This note is locked. Unlock it from the actions menu (⋮) to edit contents.</span>
-              </div>
-            )}
-
-            {isFocusMode && (
+          {isFocusMode && (
+            <div className="px-4 sm:px-6 pt-8 mx-auto w-full max-w-[720px]">
               <input
                 type="text"
+                aria-label="Note title"
                 value={note.title}
                 onChange={(e) => onUpdateNote({ ...note, title: e.target.value, updatedAt: new Date().toISOString() })}
                 onBlur={(e) => {
@@ -2561,116 +2670,97 @@ export default function EditorArea({
                     onUpdateNote({ ...note, title: "Untitled Note", updatedAt: new Date().toISOString() });
                   }
                 }}
-                className="font-display font-bold text-2xl border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100 placeholder-slate-400 w-full mb-6 pb-2 border-b border-slate-100 dark:border-zinc-800"
+                className="text-[26px] font-semibold leading-tight border-none outline-none focus:ring-0 bg-transparent text-fg placeholder:text-fg-subtle w-full"
                 placeholder="Untitled Note"
                 readOnly={note.isLocked}
               />
-            )}
-            <textarea
-              id="note-editor-textarea"
-              ref={textareaRef}
-              value={localContent}
-              onChange={handleTextareaChange}
-              onKeyDown={handleTextareaKeyDown}
-              onSelect={checkSelectionStyles}
-              onKeyUp={checkSelectionStyles}
-              onMouseUp={checkSelectionStyles}
-              onScroll={handleEditorScroll}
-              readOnly={note.isLocked}
-              className={`w-full flex-grow resize-none border-none outline-none focus:ring-0 font-mono placeholder:italic ${
-                note.isLocked ? "opacity-65 cursor-not-allowed" : ""
-              } ${fontSizeClass} ${lineWrappingClass} ${
-                theme === "dark" ? "text-zinc-300 placeholder-zinc-650 bg-transparent" : "text-slate-800 placeholder-slate-400 bg-transparent"
+            </div>
+          )}
+
+          {encrypted ? (
+            <EncryptedNotePanel note={note} onUpdateNote={onUpdateNote} />
+          ) : tiptapOn && extras ? (
+            <div className="mx-auto w-full max-w-[720px] px-4 sm:px-6 pb-8">
+              <NoteBodyEditor
+                key={note.id}
+                noteId={note.id}
+                value={note.content || ""}
+                readOnly={!!note.isLocked || !!note.isTrashed}
+                notes={extras.workspaceNotes ?? []}
+                onChange={(md) => handleContentChange(md)}
+                onOpenLink={(title) => {
+                  const id = extras.indexes?.link.resolve(title) ?? extras.createNoteWithTitle?.(title);
+                  if (id) extras.openNote?.(id);
+                }}
+              />
+            </div>
+          ) : (
+            renderRichPreview()
+          )}
+
+          {/* Floating Notion-like Slash Menu */}
+          {showSlashMenu && (
+            <div
+              id="slash-commands-dropdown"
+              ref={slashMenuRef}
+              style={{ top: slashMenuCoords.top, left: slashMenuCoords.left }}
+              className={`fixed z-50 w-60 p-1 rounded-lg shadow-pop border bg-raised flex flex-col max-w-[calc(100vw-1rem)] ${
+                theme === "dark"
+                  ? "bg-panel border-line text-fg"
+                  : "bg-panel border-line text-fg"
               }`}
-              placeholder="Start writing your next masterpiece here..."
-            />
-
-            {/* Floating Notion-like Slash Menu */}
-            {showSlashMenu && (
-              <div
-                id="slash-commands-dropdown"
-                ref={slashMenuRef}
-                style={{ top: slashMenuCoords.top, left: slashMenuCoords.left }}
-                className={`absolute z-50 w-52 p-1 rounded-xl shadow-xl border flex flex-col ${
-                  theme === "dark"
-                    ? "bg-zinc-900 border-zinc-800 text-zinc-300"
-                    : "bg-white border-slate-200 text-slate-700"
-                }`}
-              >
-                <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-2 py-1.5 border-b border-slate-100 dark:border-zinc-800">
-                  Basic Blocks
-                </div>
-                {[
-                  { id: "h1", label: "Heading 1", sub: "# Title" },
-                  { id: "h2", label: "Heading 2", sub: "## Subsection" },
-                  { id: "todo", label: "Checklist Item", sub: "- [ ] Task" },
-                  { id: "bullet", label: "Bullet Point", sub: "- Item" },
-                  { id: "code", label: "Code Block", sub: "``` Javascript" },
-                  { id: "table", label: "Data Table", sub: "Columns and rows" },
-                  { id: "quote", label: "Blockquote", sub: "> Highlighted text" },
-                ].map((cmd) => (
-                  <button
-                    key={cmd.id}
-                    onClick={() => handleInsertSlashCommand(cmd.id)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex flex-col transition-colors ${
-                      theme === "dark" ? "hover:bg-zinc-800" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className="font-semibold text-slate-900 dark:text-zinc-100">{cmd.label}</span>
-                    <span className="text-[10px] opacity-60">{cmd.sub}</span>
-                  </button>
-                ))}
+            >
+              <div className="text-[11px] font-medium text-fg-subtle uppercase tracking-wide px-2 py-1.5">
+                Insert block
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Draggable Divider for split view */}
-        {viewMode === "split" && !isMobile && (
-          <div
-            className="w-1.5 h-full hover:bg-blue-500/20 active:bg-blue-500/40 cursor-col-resize transition-colors flex-shrink-0 select-none flex items-center justify-center relative group"
-            onMouseDown={handleDividerMouseDown}
-          >
-            <div className="w-[1px] h-full bg-slate-200 dark:bg-zinc-800 group-hover:bg-blue-500"></div>
-          </div>
-        )}
-
-        {/* PREVIEW PANE */}
-        {(viewMode === "preview" || (viewMode === "split" && (!isMobile || mobileSubTab === "preview"))) && (
-          <div
-            ref={previewContainerRef}
-            onScroll={handlePreviewScroll}
-            style={{ width: (viewMode === "split" && !isMobile) ? `${100 - splitPercentage}%` : "100%", flexGrow: (viewMode === "split" && !isMobile) ? 0 : 1, flexShrink: 0 }}
-            className="h-full overflow-y-auto bg-slate-50/20 dark:bg-zinc-950/10"
-          >
-            {renderRichPreview()}
-          </div>
-        )}
+              {[
+                { id: "h1", label: "Heading 1", sub: "# Large section title" },
+                { id: "h2", label: "Heading 2", sub: "## Medium subsection" },
+                { id: "todo", label: "Checklist Item", sub: "- [ ] Actionable task" },
+                { id: "bullet", label: "Bullet Point", sub: "- Unordered list item" },
+                { id: "code", label: "Code Block", sub: "``` Syntax highlighted code" },
+                { id: "table", label: "Data Table", sub: "Interactive rows & columns" },
+                { id: "quote", label: "Blockquote", sub: "> Callout or citation" },
+              ].map((cmd) => (
+                <button
+                  key={cmd.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleInsertSlashCommand(cmd.id);
+                  }}
+                  className={`w-full text-left min-h-10 px-2 py-1.5 rounded-md text-[13px] flex flex-col transition-colors cursor-pointer ${
+                    theme === "dark" ? "hover:bg-hover" : "hover:bg-hover"
+                  }`}
+                >
+                  <span className="font-medium text-fg">{cmd.label}</span>
+                  <span className="text-[11px] text-fg-subtle">{cmd.sub}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Version History side-drawer overlay */}
         {showHistory && (
           <div
             id="version-history-drawer"
-            className={`absolute top-0 right-0 w-80 h-full border-l z-30 shadow-2xl p-4 flex flex-col ${
+            className={`absolute top-0 right-0 w-80 max-w-full h-full border-l z-30 shadow-pop p-4 flex flex-col bg-raised ${
               theme === "dark"
-                ? "bg-zinc-950 border-zinc-800 text-zinc-300"
-                : "bg-white border-slate-200 text-slate-700"
+                ? "bg-panel border-line text-fg"
+                : "bg-panel border-line text-fg"
             }`}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800 mb-4">
-              <h4 className="font-semibold text-sm flex items-center gap-2">
+            <div className="flex items-center justify-between pb-3 border-b border-line mb-4">
+              <h4 className="font-semibold text-[14px] flex items-center gap-2">
                 <History size={15} />
                 Version History
               </h4>
-              <button
-                onClick={() => setShowHistory(false)}
-                className="text-xs opacity-60 hover:opacity-100"
-              >
-                Close
-              </button>
+              <IconButton size="sm" label="Close version history" onClick={() => setShowHistory(false)}>
+                <X size={14} />
+              </IconButton>
             </div>
-            
-            <p className="text-xs opacity-60 mb-3 leading-relaxed">
+
+            <p className="text-[12px] text-fg-muted mb-3 leading-relaxed">
               We capture significant snapshots automatically as you draft. Click any record to roll back content instantly.
             </p>
 
@@ -2680,18 +2770,19 @@ export default function EditorArea({
                 type="text"
                 value={historySearchQuery}
                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                placeholder="Search snapshots content..."
-                className={`w-full px-2.5 py-1.5 rounded-xl border outline-none text-xs ${
-                  theme === "dark" ? "bg-zinc-900 border-zinc-850 text-zinc-300 placeholder-zinc-600" : "bg-slate-50 border-slate-200 text-slate-700 placeholder-slate-400"
+                placeholder="Search snapshots"
+                aria-label="Search snapshots"
+                className={`w-full h-8 px-2.5 rounded-md border outline-none text-[13px] focus:border-accent focus:ring-2 focus:ring-accent/25 ${
+                  theme === "dark" ? "bg-panel border-line text-fg placeholder:text-fg-subtle" : "bg-panel border-line text-fg placeholder:text-fg-subtle"
                 }`}
               />
               <div className="flex gap-2 items-center">
-                <span className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-semibold">Size Range:</span>
+                <span className="text-[12px] text-fg-muted">Size</span>
                 <select
                   value={historySizeFilter}
                   onChange={(e) => setHistorySizeFilter(e.target.value as any)}
-                  className={`flex-grow px-2 py-1 rounded-lg border outline-none text-[11px] font-semibold cursor-pointer ${
-                    theme === "dark" ? "bg-zinc-900 border-zinc-850 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
+                  className={`flex-grow h-8 px-2 rounded-md border outline-none text-[12px] cursor-pointer focus:border-accent ${
+                    theme === "dark" ? "bg-panel border-line text-fg" : "bg-panel border-line text-fg"
                   }`}
                 >
                   <option value="all">All Snapshots</option>
@@ -2707,25 +2798,28 @@ export default function EditorArea({
                   <div
                     key={index}
                     onClick={() => handleRestoreVersion(version.content)}
-                    className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRestoreVersion(version.content); } }}
+                    className={`p-3 rounded-lg border text-[13px] cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
                       theme === "dark"
-                        ? "bg-zinc-900 border-zinc-800 hover:border-zinc-600"
-                        : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                        ? "bg-panel border-line hover:border-line-strong"
+                        : "bg-panel border-line hover:border-line-strong"
                     }`}
                   >
-                    <div className="font-semibold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <div className="font-semibold text-fg flex items-center gap-1.5">
                       <Clock size={12} />
                       {new Date(version.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                     </div>
-                    <div className="text-[11px] opacity-60 mt-1">
+                    <div className="text-[12px] text-fg-muted mt-1">
                       {new Date(version.timestamp).toLocaleDateString([], { month: "short", day: "numeric" })} • {version.content.length} characters
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="h-40 flex flex-col items-center justify-center text-center opacity-40">
-                  <Info size={18} className="mb-1" />
-                  <span className="text-[11px]">No matching snapshots found</span>
+                <div className="h-40 flex flex-col items-center justify-center text-center text-fg-muted">
+                  <Info size={18} className="mb-1 text-fg-subtle" />
+                  <span className="text-[13px]">No snapshots yet</span>
                 </div>
               )}
             </div>
@@ -2733,78 +2827,52 @@ export default function EditorArea({
         )}
       </div>
 
+      {!isFocusMode && extras?.indexes && extras.openNote && !encrypted && (
+        <BacklinksPanel note={note} notes={extras.workspaceNotes ?? []} indexes={extras.indexes} onOpenNote={extras.openNote} />
+      )}
+
       {/* Bottom Status Bar */}
       {!isFocusMode && (
-        <div className="px-6 py-2 border-t border-border-primary hidden md:flex items-center justify-between text-xs select-none bg-bg-primary text-text-secondary">
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              <span className="font-semibold text-slate-700 dark:text-zinc-400">{note.wordCount}</span> words
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="font-semibold text-slate-700 dark:text-zinc-400">{note.readingTime}</span> min read
-            </span>
-
-            <span className="h-3 w-px bg-slate-200 dark:bg-zinc-850"></span>
-
-            {/* Status Badge */}
-            <span
-              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider select-none flex-shrink-0 ${
-                note.isTrashed
-                  ? "bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"
-                  : note.isArchived
-                  ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400"
-                  : note.status === "Published"
-                  ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
-                  : note.status === "In Review"
-                  ? "bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400"
-                  : "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400"
-              }`}
+        <div className="px-4 sm:px-6 h-8 border-t border-line flex items-center justify-between gap-3 text-[12px] select-none bg-surface text-fg-muted pb-[env(safe-area-inset-bottom)] box-content">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="tabular-nums hidden sm:inline">{note.wordCount} words</span>
+            <Badge
+              tone={note.isTrashed ? "danger" : note.isArchived ? "accent" : note.status === "Published" ? "success" : note.status === "In Review" ? "warning" : "neutral"}
             >
               {note.isTrashed ? "Trashed" : note.isArchived ? "Archived" : note.status || "Draft"}
-            </span>
-
-            <span className="h-3 w-px bg-slate-200 dark:bg-zinc-850"></span>
-
-            {/* Auto save indicator / Manual save button */}
-            {settings?.autoSave === false ? (
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`text-[10px] font-mono font-medium ${
-                  note.content !== localContent ? "text-amber-500 animate-pulse animate-duration-1000" : "text-slate-400 dark:text-zinc-500"
-                }`}>
-                  {note.content !== localContent ? "Unsaved" : "Saved"}
-                </span>
-                {note.content !== localContent && (
-                  <button
-                    onClick={handleManualSave}
-                    className="px-1.5 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-[9px] font-bold transition-all shadow-xs cursor-pointer"
-                    title="Save changes (Ctrl+S)"
-                  >
-                    Save
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500 font-mono flex-shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>{isSaving ? "Saving..." : "Synced"}</span>
-              </div>
-            )}
+            </Badge>
           </div>
 
-          <div className="flex items-center gap-4 font-mono text-[10.5px]">
-            <span>Category: <strong>{folderName}</strong></span>
-            <span>
-              Tags: <strong>
-                {note.tags.length === 0
-                  ? "None"
-                  : note.tags[0] + (note.tags.length > 1 ? ` +${note.tags.length - 1}` : "")
-                }
-              </strong>
-            </span>
-            <span>Modified: {new Date(note.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-          </div>
+          {/* Auto save indicator / Manual save button */}
+          {settings?.autoSave === false ? (
+            <div className="flex items-center gap-2 flex-shrink-0" role="status">
+              <span className={`text-[12px] ${note.content !== localContent ? "text-warning" : "text-fg-subtle"}`}>
+                {note.content !== localContent ? "Unsaved changes" : "Saved"}
+              </span>
+              {note.content !== localContent && (
+                <button
+                  onClick={handleManualSave}
+                  className="h-6 px-2 rounded-md bg-accent hover:bg-accent-hover text-accent-fg text-[12px] font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-accent"
+                  title="Save changes (Ctrl+S)"
+                >
+                  Save
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-fg-subtle flex-shrink-0" role="status">
+              <span className={`w-1.5 h-1.5 rounded-full ${isSaving ? "bg-warning motion-safe:animate-pulse" : "bg-success"}`}></span>
+              <span>{isSaving ? "Saving" : "Saved"}</span>
+            </div>
+          )}
         </div>
       )}
+      <EncryptNoteDialog
+        open={encryptOpen}
+        note={note}
+        onClose={() => setEncryptOpen(false)}
+        onEncrypted={(n) => onUpdateNote(n)}
+      />
       <ImageUploadModal
         isOpen={isImageModalOpen}
         onClose={() => setIsImageModalOpen(false)}
@@ -2925,32 +2993,32 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none cursor-pointer"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 select-none cursor-pointer"
     >
       <div
-        className="w-full max-w-md rounded-3xl shadow-2xl border border-border-primary overflow-hidden p-5 flex flex-col gap-4 animate-fade-in bg-bg-secondary text-text-primary cursor-default"
+        className="w-full max-w-md rounded-lg shadow-pop border border-line overflow-hidden p-5 flex flex-col gap-4 animate-fade-in bg-panel text-fg cursor-default"
       >
-        <div className="flex justify-between items-center pb-2.5 border-b border-slate-100 dark:border-zinc-800/80">
-          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
-            <Upload size={14} className="text-blue-500" />
+        <div className="flex justify-between items-center pb-2.5 border-b border-line">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Upload size={14} className="text-accent" />
             Upload & Edit Image
           </h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-805 text-slate-500 cursor-pointer">
+          <button onClick={onClose} className="p-1 rounded hover:bg-hover text-fg-muted cursor-pointer max-md:min-h-10 max-md:min-w-10 inline-flex items-center justify-center">
             <X size={14} />
           </button>
         </div>
 
         {/* Tabs switcher */}
-        <div className="flex border-b border-slate-100 dark:border-zinc-800/80">
+        <div className="flex border-b border-line">
           <button
             onClick={() => {
               setActiveTab("upload");
               setError("");
             }}
-            className={`flex-grow pb-2 text-xs font-semibold text-center border-b-2 cursor-pointer transition-all ${
+            className={`flex-grow pb-2 max-md:min-h-10 text-xs font-semibold text-center border-b-2 cursor-pointer transition-all ${
               activeTab === "upload"
-                ? "border-blue-500 text-blue-500"
-                : "border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-400"
+                ? "border-accent/40 text-accent"
+                : "border-transparent text-fg-subtle hover:text-fg-muted"
             }`}
           >
             Upload to ImgBB
@@ -2960,10 +3028,10 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
               setActiveTab("url");
               setError("");
             }}
-            className={`flex-grow pb-2 text-xs font-semibold text-center border-b-2 cursor-pointer transition-all ${
+            className={`flex-grow pb-2 max-md:min-h-10 text-xs font-semibold text-center border-b-2 cursor-pointer transition-all ${
               activeTab === "url"
-                ? "border-blue-500 text-blue-500"
-                : "border-transparent text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-400"
+                ? "border-accent/40 text-accent"
+                : "border-transparent text-fg-subtle hover:text-fg-muted"
             }`}
           >
             Insert Image URL
@@ -2971,7 +3039,7 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
         </div>
 
         {error && (
-          <div className="p-3 text-[11px] font-semibold border border-rose-500/20 bg-rose-500/5 text-rose-500 rounded-xl leading-relaxed">
+          <div className="p-3 text-[11px] font-semibold border border-danger/40 bg-danger-soft text-danger rounded-lg leading-relaxed">
             {error}
           </div>
         )}
@@ -2982,12 +3050,12 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
               {/* ImgBB API Key Field */}
               <div className="flex flex-col gap-1">
                 <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">ImgBB API Key</label>
+                  <label className="text-[10px] font-bold text-fg-subtle uppercase tracking-wider">ImgBB API Key</label>
                   <a
                     href="https://api.imgbb.com/"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[9.5px] text-blue-500 hover:underline font-semibold"
+                    className="text-[9.5px] text-accent hover:underline font-semibold"
                   >
                     Get Key
                   </a>
@@ -2997,19 +3065,19 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="Paste your 32-character ImgBB API key..."
-                  className={`w-full px-3 py-2 rounded-xl border outline-none font-mono ${
-                    theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300 placeholder-zinc-700" : "bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400"
+                  className={`w-full px-3 py-2 max-md:min-h-10 rounded-lg border outline-none font-mono ${
+                    theme === "dark" ? "bg-panel border-line text-fg placeholder:text-fg-subtle" : "bg-panel border-line text-fg placeholder:text-fg-subtle"
                   }`}
                 />
               </div>
 
               {/* File Select */}
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Select Image</label>
+                <label className="text-[10px] font-bold text-fg-subtle uppercase tracking-wider">Select Image</label>
                 <div className="flex items-center gap-2">
                   <label
-                    className={`flex-grow px-3 py-2 rounded-xl border border-dashed flex items-center justify-center gap-1.5 cursor-pointer text-center text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-900 transition-colors ${
-                      file ? "border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400" : "border-slate-300 dark:border-zinc-800"
+                    className={`flex-grow px-3 py-2 max-md:min-h-10 rounded-lg border border-dashed flex items-center justify-center gap-1.5 cursor-pointer text-center text-fg-muted hover:bg-hover transition-colors ${
+                      file ? "border-success/40 bg-success-soft text-success" : "border-line"
                     }`}
                   >
                     <Upload size={12} />
@@ -3024,33 +3092,33 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
           ) : (
             /* From URL */
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Image Address (URL)</label>
+              <label className="text-[10px] font-bold text-fg-subtle uppercase tracking-wider">Image Address (URL)</label>
               <input
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com/image.png"
-                className={`w-full px-3 py-2 rounded-xl border outline-none ${
-                  theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300 placeholder-zinc-700" : "bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400"
+                className={`w-full px-3 py-2 max-md:min-h-10 rounded-lg border outline-none ${
+                  theme === "dark" ? "bg-panel border-line text-fg placeholder:text-fg-subtle" : "bg-panel border-line text-fg placeholder:text-fg-subtle"
                 }`}
               />
             </div>
           )}
 
           {/* EDIT DETAILS SECTION (Alt text, width, alignment) */}
-          <div className="border-t border-slate-100 dark:border-zinc-800/85 pt-3 flex flex-col gap-3">
-            <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">Image Configurations</span>
+          <div className="border-t border-line pt-3 flex flex-col gap-3">
+            <span className="text-[10px] font-bold text-fg-subtle uppercase tracking-wider">Image Configurations</span>
 
             {/* Alt / Caption */}
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-medium text-slate-500 dark:text-zinc-400">Caption / Alternative text</label>
+              <label className="text-[10px] font-medium text-fg-muted">Caption / Alternative text</label>
               <input
                 type="text"
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 placeholder="Optional description of the image"
-                className={`w-full px-3 py-2 rounded-xl border outline-none ${
-                  theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300 placeholder-zinc-700" : "bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400"
+                className={`w-full px-3 py-2 max-md:min-h-10 rounded-lg border outline-none ${
+                  theme === "dark" ? "bg-panel border-line text-fg placeholder:text-fg-subtle" : "bg-panel border-line text-fg placeholder:text-fg-subtle"
                 }`}
               />
             </div>
@@ -3058,26 +3126,26 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
             <div className="grid grid-cols-2 gap-3">
               {/* Width / Height */}
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-slate-500 dark:text-zinc-400">Width (e.g. 300, 100%)</label>
+                <label className="text-[10px] font-medium text-fg-muted">Width (e.g. 300, 100%)</label>
                 <input
                   type="text"
                   value={width}
                   onChange={(e) => setWidth(e.target.value)}
                   placeholder="Auto"
-                  className={`w-full px-3 py-1.5 rounded-xl border outline-none ${
-                    theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-800"
+                  className={`w-full px-3 py-1.5 rounded-lg border outline-none ${
+                    theme === "dark" ? "bg-panel border-line text-fg" : "bg-panel border-line text-fg"
                   }`}
                 />
               </div>
 
               {/* Alignment */}
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-medium text-slate-500 dark:text-zinc-400">Alignment</label>
+                <label className="text-[10px] font-medium text-fg-muted">Alignment</label>
                 <select
                   value={align}
                   onChange={(e) => setAlign(e.target.value as any)}
-                  className={`w-full px-3 py-1.5 rounded-xl border outline-none font-semibold ${
-                    theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-800"
+                  className={`w-full px-3 py-1.5 rounded-lg border outline-none font-semibold ${
+                    theme === "dark" ? "bg-panel border-line text-fg" : "bg-panel border-line text-fg"
                   }`}
                 >
                   <option value="center">Center</option>
@@ -3090,11 +3158,11 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800/80 animate-fade-in">
+        <div className="flex justify-end gap-2.5 pt-2 border-t border-line animate-fade-in">
           <button
             onClick={onClose}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
-              theme === "dark" ? "border-zinc-800 text-zinc-400 hover:bg-zinc-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+            className={`px-4 py-2 max-md:min-h-10 rounded-lg text-xs font-semibold border ${
+              theme === "dark" ? "border-line text-fg-muted hover:bg-hover" : "border-line text-fg-muted hover:bg-hover"
             }`}
           >
             Cancel
@@ -3102,7 +3170,7 @@ function ImageUploadModal({ isOpen, onClose, onInsert, theme }: ImageUploadModal
           <button
             onClick={handleUploadAndInsert}
             disabled={isUploading}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 max-md:min-h-10 bg-accent hover:bg-accent-hover text-accent-fg font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-soft cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? (
               <>

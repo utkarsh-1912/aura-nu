@@ -42,6 +42,8 @@ export const getCleanInitialWorkspaces = (userEmail?: string): Workspace[] => {
         defaultFolder: "General",
         shortcutsEnabled: true,
         enableNotifications: true,
+        lineWrapping: true,
+        showLineNumbers: false,
       },
       members: [
         { id: "m-1", name: capitalized, email: safeEmail, role: "Owner", joinedAt: new Date().toISOString().split("T")[0] }

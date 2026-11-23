@@ -4,9 +4,14 @@ import * as Sentry from "@sentry/react";
 import App from './App.tsx';
 import './index.css';
 import { initSentry } from './sentry';
+import { bootServiceWorker } from './features/pwa/swBoot';
+import QuickNoteWindow, { isQuickNoteWindow } from './features/desktop/QuickNoteWindow';
 
 // Initialize Sentry before rendering the app
 initSentry();
+
+// Service worker: production builds only (never registered in dev).
+if (import.meta.env.PROD) bootServiceWorker();
 
 const container = document.getElementById('root')!;
 
@@ -49,6 +54,6 @@ const SentryApp = Sentry.withErrorBoundary(App, {
 
 createRoot(container).render(
   <StrictMode>
-    <SentryApp />
+    {isQuickNoteWindow() ? <QuickNoteWindow /> : <SentryApp />}
   </StrictMode>,
 );

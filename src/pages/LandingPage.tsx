@@ -1,25 +1,23 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Sparkles,
   ArrowRight,
-  Shield,
-  Zap,
-  Globe,
-  Database,
-  CheckCircle2,
+  Check,
   ChevronDown,
-  Star,
-  Users,
+  Minus,
   Moon,
   Sun,
-  Lock,
+  HardDrive,
+  Cpu,
+  Workflow,
+  Search,
   FileText,
-  MousePointerClick,
-  Table,
-  ListTodo
+  Folder,
+  Sparkles,
+  Hash,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { Badge, Button, IconButton, Kbd, Logo, Separator, cn } from "../ui";
+import { TIER_LABELS, TIER_PERMISSIONS } from "../lib/tierPermissions";
 
 interface LandingPageProps {
   theme: "light" | "dark";
@@ -28,597 +26,448 @@ interface LandingPageProps {
   onEnterDemo: () => void;
 }
 
-export default function LandingPage({
-  theme,
-  onSetTheme,
-  onNavigateToAuth,
-  onEnterDemo,
-}: LandingPageProps) {
-  const [faqOpen, setFaqOpen] = useState<Record<number, boolean>>({});
+const NAV = [
+  { href: "#features", label: "Features" },
+  { href: "#compare", label: "Compare" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "#faq", label: "FAQ" },
+];
 
-  const toggleFaq = (index: number) => {
-    setFaqOpen((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
+const FAQS = [
+  {
+    q: "Does Aura work offline?",
+    a: "Yes. Notes are written to your device first and synced in the background. When you reconnect, changes are reconciled with the server revision.",
+  },
+  {
+    q: "Is AI required?",
+    a: "No. Every AI feature is optional and off until you turn it on. You choose the provider, including a model running locally on your machine, and you can bring your own key.",
+  },
+  {
+    q: "Where does my data live?",
+    a: "On your device, plus your workspace server when sync is enabled. Notes are plain Markdown, so you can export them and open them in any other editor.",
+  },
+  {
+    q: "Can my team use it?",
+    a: "Team and Enterprise workspaces support member invites, shared workspaces and an admin console. Enterprise adds SSO configuration and audit log export.",
+  },
+];
 
-  const faqs = [
-    {
-      q: "Does Aura work offline without an active internet connection?",
-      a: "Yes, absolutely. Aura utilizes a advanced offline-first client replication layer. Any modifications you compose are persisted immediately inside the safe localStorage cache. The second your device reconnects, they are gracefully synchronized back to your cloud volume with revision reconciliation.",
-    },
-    {
-      q: "How secure is my proprietary data and notes content?",
-      a: "Enterprise-grade encryption is built into our core pipeline. Your files are isolated and stored in secure server environments. Your OpenAI or Gemini APIs run via server proxy parameters, meaning your personal API keys are never exposed to clients, and your text data is never used for foundation model training.",
-    },
-    {
-      q: "Can I self-host Aura or configure my own databases?",
-      a: "Our Enterprise Tier supports custom database attachments including secure PostgreSQL blocks, Cloud SQL integration, and customized private-tenant VPC setups. Reach out to our systems team for private cluster arrangements.",
-    },
-    {
-      q: "What AI models are available within the Smart Shortcuts system?",
-      a: "By default, Aura uses Google's latest Gemini 3.5 Flash engines, but you can configure your own private keys to unlock Gemini 1.5 Pro, Claude 3.5 Sonnet, or custom fine-tuned company endpoints inside your Settings workspace.",
-    },
+const COMPARE: { label: string; aura: boolean; apple: boolean | string }[] = [
+  { label: "Cross-platform (web, desktop, mobile)", aura: true, apple: "Apple devices only" },
+  { label: "Open Markdown files", aura: true, apple: false },
+  { label: "Team collaboration", aura: true, apple: "Limited sharing" },
+  { label: "Backlinks between notes", aura: true, apple: false },
+  { label: "Automation and workflows", aura: true, apple: "Shortcuts only" },
+];
+
+function fmt(n: number, unit = "") {
+  return n < 0 ? "Unlimited" : `${n.toLocaleString()}${unit}`;
+}
+
+function tierLines(tier: "personal" | "team" | "enterprise") {
+  const p = TIER_PERMISSIONS[tier];
+  const lines = [
+    `${fmt(p.maxWorkspaces)} workspaces`,
+    `${fmt(p.maxMembersPerWorkspace)} ${p.maxMembersPerWorkspace === 1 ? "member" : "members"} per workspace`,
+    `${fmt(p.aiActionsPerMonth)} AI actions per month`,
+    `${fmt(p.storageLimitGB, " GB")} storage`,
   ];
+  if (p.canInviteMembers) lines.push("Member invites");
+  if (p.canAccessAdminConsole) lines.push("Admin console");
+  if (p.canConfigureSSO) lines.push("SSO configuration");
+  if (p.canExportAuditLogs) lines.push("Audit log export");
+  if (p.prioritySupport) lines.push("Priority support");
+  return lines;
+}
+
+/** Faithful three-pane preview built from tokens. Decorative, so hidden from assistive tech. */
+function ProductMock() {
+  const notes = [
+    { t: "Q3 planning", m: "Today", sel: true },
+    { t: "Weekly sync notes", m: "Yesterday" },
+    { t: "API design review", m: "Mon" },
+    { t: "Reading list", m: "Last week" },
+  ];
+  return (
+    <div
+      aria-hidden="true"
+      className="mx-auto w-full max-w-5xl overflow-hidden rounded-lg border border-line bg-surface shadow-pop"
+    >
+      <div className="flex h-9 items-center gap-1.5 border-b border-line bg-sidebar px-3">
+        <span className="h-2.5 w-2.5 rounded-full bg-line-strong" />
+        <span className="h-2.5 w-2.5 rounded-full bg-line-strong" />
+        <span className="h-2.5 w-2.5 rounded-full bg-line-strong" />
+      </div>
+      <div className="grid h-[320px] grid-cols-1 sm:h-[380px] sm:grid-cols-[180px_1fr] lg:grid-cols-[180px_240px_1fr]">
+        <div className="hidden flex-col gap-0.5 border-r border-line bg-sidebar p-2 sm:flex">
+          <div className="mb-2 flex items-center gap-2 px-1.5 py-1">
+            <Logo size={20} />
+          </div>
+          <div className="flex h-7 items-center gap-2 rounded-md bg-hover px-2 text-[12px] text-fg-subtle">
+            <Search size={12} /> Search <Kbd className="ml-auto">K</Kbd>
+          </div>
+          <div className="mt-3 px-2 text-[11px] font-medium text-fg-subtle">Folders</div>
+          {["Work", "Personal", "Research"].map((f, i) => (
+            <div
+              key={f}
+              className={cn(
+                "flex h-7 items-center gap-2 rounded-md px-2 text-[12px]",
+                i === 0 ? "bg-accent-soft text-accent" : "text-fg-muted",
+              )}
+            >
+              <Folder size={12} /> {f}
+            </div>
+          ))}
+          <div className="mt-3 px-2 text-[11px] font-medium text-fg-subtle">Tags</div>
+          {["planning", "ideas"].map((f) => (
+            <div key={f} className="flex h-7 items-center gap-2 rounded-md px-2 text-[12px] text-fg-muted">
+              <Hash size={12} /> {f}
+            </div>
+          ))}
+        </div>
+        <div className="hidden flex-col border-r border-line bg-panel lg:flex">
+          <div className="border-b border-line px-3 py-2.5 text-[12px] font-medium text-fg">Work</div>
+          {notes.map((n) => (
+            <div
+              key={n.t}
+              className={cn("border-b border-line px-3 py-2", n.sel && "bg-accent-soft")}
+            >
+              <div className="text-[13px] font-medium text-fg">{n.t}</div>
+              <div className="text-[12px] text-fg-muted">{n.m}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col bg-surface p-5 sm:p-7">
+          <div className="text-[11px] text-fg-subtle">Work / Q3 planning</div>
+          <div className="mt-2 text-[22px] font-semibold tracking-tight text-fg">Q3 planning</div>
+          <div className="mt-4 space-y-2.5 text-[14px] leading-relaxed text-fg-muted">
+            <p>Goals for the quarter, linked to the roadmap in [[Roadmap 2026]].</p>
+            <p className="flex items-center gap-2">
+              <span className="h-3.5 w-3.5 rounded-[4px] border border-line-strong" /> Draft launch checklist
+            </p>
+            <p className="flex items-center gap-2">
+              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[4px] bg-accent text-accent-fg">
+                <Check size={10} />
+              </span>
+              Confirm sync rollout
+            </p>
+          </div>
+          <div className="mt-auto flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-[12px] text-fg-muted">
+            <Sparkles size={12} className="text-accent" /> Summarize this note
+            <Badge className="ml-auto">Local model</Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LandingPage({ theme, onSetTheme, onNavigateToAuth, onEnterDemo }: LandingPageProps) {
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const features = [
     {
-      icon: Sparkles,
-      title: "Gemini Copilot Actions",
-      desc: "Instantly generate summaries, rewrite meeting notes, extract lists of action items, translate to Spanish/French, or chat directly in-context with Gemini Flash 3.5.",
-      color: "from-blue-500/10 to-indigo-500/10 text-indigo-500",
+      icon: HardDrive,
+      title: "Local-first, with sync",
+      body: "Your notes open instantly because they live on your device. Edit offline, then sync across web, desktop and mobile when you are back online. Notes stay plain Markdown, so there is no lock-in.",
+      points: ["Works with no connection", "Revision-aware conflict handling", "Export to Markdown at any time"],
     },
     {
-      icon: Table,
-      title: "Interactive Markdown Tables",
-      desc: "Insert, edit, and reorganize raw data tables inside Markdown pages with live cell editing, column resizing, and row additions.",
-      color: "from-purple-500/10 to-pink-500/10 text-purple-500",
+      icon: Cpu,
+      title: "Private AI, your choice of model",
+      body: "AI is optional. Turn it on when you want summaries, rewrites or questions about your notes, and point it at a local model or your own provider key. Nothing is sent anywhere until you decide.",
+      points: ["Run a model locally", "Bring your own provider key", "Off by default"],
     },
     {
-      icon: Zap,
-      title: "Spotlight Command Palette",
-      desc: "Tap search or hit ⌘K to activate search, execute AI shortcuts, select workspaces, delete notes, or adjust appearance instantly.",
-      color: "from-amber-500/10 to-orange-500/10 text-amber-500",
-    },
-    {
-      icon: Database,
-      title: "Offline-First Client Sync",
-      desc: "Work with zero connectivity. Client storage replicates to local cache databases and automatically synchronizes to Express servers upon reconnection.",
-      color: "from-emerald-500/10 to-teal-500/10 text-emerald-500",
-    },
-    {
-      icon: ListTodo,
-      title: "Organizational Workspace Trees",
-      desc: "Organize work across departments, projects, and folder branches. Filter documents using horizontal scrollable tag bars.",
-      color: "from-rose-500/10 to-red-500/10 text-rose-500",
-    },
-    {
-      icon: Shield,
-      title: "Enterprise Custom Rules & Roles",
-      desc: "Define custom guidelines, allocate manager/member/owner roles, enforce storage quotas, and sync workspace visual themes.",
-      color: "from-cyan-500/10 to-blue-500/10 text-cyan-500",
+      icon: Workflow,
+      title: "Workflows and agents",
+      body: "Automate the repetitive parts: capture, tag, file and follow up. Build workflows visually, or let an agent work through your notes with the tools you grant it.",
+      points: ["Visual workflow studio", "Agents with scoped tools", "Team workspaces and roles"],
     },
   ];
 
-  const plans = [
-    {
-      name: "Starter Sandbox",
-      price: "$0",
-      desc: "A powerful workspace for personal strategy & writing.",
-      features: [
-        "Up to 25 documents",
-        "Standard Gemini 3.5 Flash completions",
-        "Local-first cache persistence",
-        "Basic 3 tag categories",
-        "Standard Light/Dark themes",
-      ],
-      action: () => onNavigateToAuth("register"),
-      btnText: "Start for Free",
-      popular: false,
-    },
-    {
-      name: "Aura Pro Suite",
-      price: "$12",
-      period: "/month",
-      desc: "Enhanced AI context window & collaborative sharing.",
-      features: [
-        "Unlimited document workspace",
-        "Higher rate limit Gemini 3.5 completions",
-        "Resilient dual server database sync",
-        "Full Command Palette (⌘K) features",
-        "Smart folders & automated organization",
-        "Premium support & version histories",
-      ],
-      action: () => onNavigateToAuth("register"),
-      btnText: "Upgrade to Pro",
-      popular: true,
-    },
-    {
-      name: "Enterprise Core",
-      price: "$49",
-      period: "/seat/mo",
-      desc: "Dedicated compliance, custom databases, & custom LLM keys.",
-      features: [
-        "Everything in Pro Suite",
-        "Custom SQL database attachments",
-        "BYOK (Bring Your Own Key) custom endpoints",
-        "SAML SSO & active Directory Sync",
-        "Custom security audit logging",
-        "Dedicated VPC infrastructure hosting",
-      ],
-      action: () => onNavigateToAuth("register"),
-      btnText: "Contact Enterprise",
-      popular: false,
-    },
-  ];
+  const tiers = (["personal", "team", "enterprise"] as const).map((t) => ({
+    id: t,
+    name: TIER_LABELS[t],
+    price: t === "personal" ? "Free" : t === "team" ? "Per seat" : "Custom",
+    blurb:
+      t === "personal"
+        ? "For individuals who want fast, private notes."
+        : t === "team"
+          ? "For teams that share workspaces and knowledge."
+          : "For organizations that need SSO, audit and control.",
+    lines: tierLines(t),
+    cta: t === "personal" ? "Get started" : t === "team" ? "Start with Team" : "Talk to us",
+    featured: t === "team",
+  }));
 
   return (
-    <div
-      id="landing-page"
-      className={`min-h-screen font-sans overflow-x-hidden ${
-        theme === "dark" ? "bg-[#09090b] text-zinc-100" : "bg-[#fafafc] text-slate-800"
-      }`}
-    >
-      {/* Sticky Header */}
-      <header
-        id="landing-nav"
-        className={`sticky top-0 z-40 w-full backdrop-blur-md border-b ${
-          theme === "dark"
-            ? "bg-[#09090b]/85 border-zinc-800/80"
-            : "bg-white/85 border-slate-200/60"
-        } transition-colors`}
+    <div id="landing-page" className="min-h-screen overflow-x-hidden bg-surface text-fg">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-[13px] focus:text-accent-fg"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="Aura Logo" className="w-8 h-8 object-contain" />
-            <span className="hidden sm:inline font-tomorrow font-bold text-base tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
-              Aura Next
-            </span>
-          </div>
+        Skip to content
+      </a>
 
-          <nav className="hidden md:flex items-center gap-8 text-xs font-medium text-slate-500 dark:text-zinc-400">
-            <a href="#features-section" className="hover:text-slate-900 dark:hover:text-white transition-colors">Features</a>
-            <a href="#testimonials-section" className="hover:text-slate-900 dark:hover:text-white transition-colors">Client Love</a>
-            <a href="#pricing-section" className="hover:text-slate-900 dark:hover:text-white transition-colors">Pricing</a>
-            <a href="#faq-section" className="hover:text-slate-900 dark:hover:text-white transition-colors">FAQ</a>
+      <header id="landing-nav" className="sticky top-0 z-40 border-b border-line bg-surface">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+          <Logo size={24} />
+          <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+            {NAV.map((n) => (
+              <a
+                key={n.href}
+                href={n.href}
+                className="rounded-md px-2.5 py-1.5 text-[13px] text-fg-muted transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                {n.label}
+              </a>
+            ))}
           </nav>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
+          <div className="flex items-center gap-1.5">
+            <IconButton
+              label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              variant="ghost"
               onClick={() => onSetTheme(theme === "light" ? "dark" : "light")}
-              className={`p-2 rounded-xl border transition-colors ${
-                theme === "dark"
-                  ? "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-white"
-                  : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-900"
-              } cursor-pointer`}
-              aria-label="Toggle Theme"
+              className="max-sm:h-10 max-sm:w-10"
             >
-              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
-
-            <button
+              {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+            </IconButton>
+            <Button
               id="landing-login-btn"
+              variant="ghost"
               onClick={() => onNavigateToAuth("login")}
-              className="text-xs font-semibold px-2 sm:px-4 py-2 text-slate-600 dark:text-zinc-300 hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
+              className="max-sm:h-10"
             >
-              Login
-            </button>
-
-            <button
+              Sign in
+            </Button>
+            <Button
               id="landing-register-btn"
+              variant="primary"
               onClick={() => onNavigateToAuth("register")}
-              className="text-xs font-semibold px-3 sm:px-4 py-2 bg-slate-950 text-white dark:bg-white dark:text-zinc-950 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all shadow-sm cursor-pointer whitespace-nowrap"
+              className="max-sm:h-10"
             >
-              Get Started
-            </button>
+              Get started
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-20 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-[400px] bg-gradient-to-tr from-purple-500/10 via-blue-500/5 to-transparent blur-[120px] rounded-full pointer-events-none"></div>
-
-        <div className="text-center max-w-3xl mx-auto flex flex-col items-center">
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 rounded-full text-[11px] font-mono font-semibold uppercase tracking-wider mb-6"
-          >
-            <Sparkles size={11} />
-            Unleashing Gemini-Powered Intelligence
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="font-display font-extrabold text-[40px] sm:text-[54px] tracking-tight leading-[1.08] text-slate-900 dark:text-white"
-          >
-            The Generative Workspace for <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-blue-500">Deep Thinkers</span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-sm sm:text-base text-slate-500 dark:text-zinc-400 mt-6 max-w-xl leading-relaxed"
-          >
-            Fusing polished markdown mechanics with secure, proxy-safe Gemini model workflows. Fully offline-first with immediate client-server database redundancy.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mt-8 flex flex-col sm:flex-row gap-3 w-full sm:w-auto"
-          >
-            <button
-              onClick={() => onNavigateToAuth("register")}
-              className="flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-500 hover:bg-blue-600 active:scale-[0.98] text-white font-semibold text-xs rounded-xl shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
-            >
-              Get Started for Free
-              <ArrowRight size={13} />
-            </button>
-
-            <button
-              onClick={onEnterDemo}
-              className={`flex items-center justify-center gap-2 px-6 py-3.5 border font-semibold text-xs rounded-xl transition-all active:scale-[0.98] ${
-                theme === "dark"
-                  ? "border-zinc-800 bg-zinc-900/40 text-zinc-200 hover:bg-zinc-850 hover:border-zinc-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:shadow-sm"
-              } cursor-pointer`}
-            >
-              <MousePointerClick size={13} />
-              Launch Live Sandbox Demo
-            </button>
-          </motion.div>
-        </div>
-
-        {/* Product Screenshot */}
-        <motion.div
-          initial={{ opacity: 0, y: 35 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="mt-16 relative mx-auto max-w-5xl rounded-2xl border bg-slate-900/5 dark:bg-white/5 p-2 border-slate-200/60 dark:border-zinc-800/80 backdrop-blur-xs shadow-2xl"
-        >
-          <div className="rounded-xl overflow-hidden border border-slate-200/50 dark:border-zinc-800 shadow-inner relative bg-zinc-950">
-            {/* Top Bar Decoration */}
-            <div className="bg-zinc-900 px-4 py-2.5 flex items-center justify-between border-b border-zinc-800">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-rose-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-amber-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-emerald-500/80"></div>
-              </div>
-              <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
-                <Lock size={10} />
-                app.auranext.io/w/strategy/min
-              </div>
-              <div className="w-12"></div>
+      <main id="main">
+        {/* Hero */}
+        <section className="mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pt-20">
+          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+            <Badge tone="accent">Open, local-first, AI-optional</Badge>
+            <h1 className="mt-5 text-[34px] font-semibold leading-[1.1] tracking-tight sm:text-[46px]">
+              Notes your team owns, that work everywhere.
+            </h1>
+            <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-fg-muted">
+              Aura is an open notes app for teams. Fast and offline on every device, stored as Markdown you can take
+              anywhere, with AI only when you want it.
+            </p>
+            <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => onNavigateToAuth("register")}
+                trailingIcon={<ArrowRight size={15} />}
+                className="max-sm:h-11"
+              >
+                Get started free
+              </Button>
+              <Button variant="secondary" size="lg" onClick={onEnterDemo} className="max-sm:h-11">
+                Try the demo
+              </Button>
             </div>
-
-            {/* Simulated Desktop Preview */}
-            <div className="grid grid-cols-12 h-[340px] text-xs font-sans text-zinc-400 bg-[#0c0c0e]">
-              <div className="col-span-3 border-r border-zinc-800/80 p-3 flex flex-col gap-2 bg-[#09090b]">
-                <div className="flex items-center gap-2 bg-zinc-800/50 p-2 rounded-lg text-zinc-200 font-medium">
-                  <FileText size={12} className="text-blue-500" />
-                  <span>Q3 Launch OKRs</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg text-zinc-500">
-                  <FileText size={12} />
-                  <span>Developer Retro minutes</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg text-zinc-500">
-                  <FileText size={12} />
-                  <span>Security compliance log</span>
-                </div>
-              </div>
-
-              <div className="col-span-6 p-5 flex flex-col gap-3 overflow-hidden bg-[#0c0c0e]">
-                <span className="text-[10px] font-mono text-zinc-500">FOLDER: STRATEGY</span>
-                <h3 className="font-display font-semibold text-base text-zinc-100">🎯 Q3 Product OKRs & Marketing Targets</h3>
-                <p className="text-[11px] leading-relaxed text-zinc-400">
-                  # Core Objectives for the Q3 Beta Release
-                  <br /><br />
-                  - **Objective 1**: Build client-side robust SQLite encryption pipelines.<br />
-                  - **Objective 2**: Decrease standard bundle loadtimes from 2.5s down to 180ms using Vite splitting modules.
-                </p>
-              </div>
-
-              <div className="col-span-3 border-l border-zinc-800/80 p-4 bg-[#0d0d10] flex flex-col gap-3">
-                <div className="flex items-center gap-1.5 text-zinc-300 font-semibold text-[11px]">
-                  <Sparkles size={11} className="text-purple-400 animate-pulse" />
-                  <span>Aura AI Insight</span>
-                </div>
-                <div className="bg-zinc-900/60 border border-zinc-800/80 p-3 rounded-xl flex flex-col gap-2">
-                  <span className="text-[10px] text-purple-400 font-mono uppercase tracking-wider">Suggested Actions</span>
-                  <p className="text-[10px] leading-tight text-zinc-400">Construct detailed action-items for SQLite encryption pipelines draft.</p>
-                  <button className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-[9px] font-medium mt-1 w-max">Apply Checklist</button>
-                </div>
-              </div>
-            </div>
+            <p className="mt-3 text-[12px] text-fg-subtle">No credit card needed. The demo runs without an account.</p>
           </div>
-        </motion.div>
-      </section>
+          <div className="mt-12">
+            <ProductMock />
+          </div>
+        </section>
 
-      {/* Trusted Companies */}
-      <section className={`py-8 border-y ${theme === "dark" ? "border-zinc-800 bg-zinc-950/20" : "border-slate-100 bg-slate-50/50"}`}>
-        <div className="max-w-7xl mx-auto px-4 text-center">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 block mb-4">
-            Adopted by Leaders at Modern Product Organizations
-          </span>
-          <div className="flex flex-wrap justify-center items-center gap-8 sm:gap-16 opacity-40 grayscale invert dark:invert-0 select-none">
-            {["Vercel", "Stripe", "Linear", "Supabase", "Framer", "Datadog"].map((company) => (
-              <span key={company} className="font-display font-bold text-sm sm:text-base tracking-tight text-zinc-500">
-                {company}
-              </span>
+        <Separator />
+
+        {/* Features */}
+        <section id="features" className="mx-auto max-w-6xl scroll-mt-16 px-4 py-16 sm:px-6">
+          <h2 className="text-[26px] font-semibold tracking-tight">Built for how teams actually write</h2>
+          <p className="mt-2 max-w-xl text-[14px] text-fg-muted">
+            Three ideas run through the whole product: your data stays yours, AI stays optional, and repetitive work
+            gets automated.
+          </p>
+          <div className="mt-10 divide-y divide-line border-y border-line">
+            {features.map((f) => (
+              <div key={f.title} className="grid gap-4 py-8 md:grid-cols-[1fr_1.2fr] md:gap-10">
+                <div>
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                    <f.icon size={17} />
+                  </span>
+                  <h3 className="mt-4 text-[16px] font-semibold">{f.title}</h3>
+                </div>
+                <div>
+                  <p className="text-[14px] leading-relaxed text-fg-muted">{f.body}</p>
+                  <ul className="mt-4 space-y-2">
+                    {f.points.map((p) => (
+                      <li key={p} className="flex items-center gap-2 text-[13px] text-fg">
+                        <Check size={14} className="text-success" /> {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Bento Features Grid */}
-      <section id="features-section" className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto relative">
-        <div className="text-center max-w-2xl mx-auto mb-16">
-          <h2 className="font-display font-bold text-3xl sm:text-4xl tracking-tight text-slate-900 dark:text-white">
-            Supercharged Productivity. No Friction.
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 mt-2">
-            Every pipeline designed for speed, flexibility, security, and inline generative intelligence.
+        {/* Compare */}
+        <section id="compare" className="mx-auto max-w-6xl scroll-mt-16 px-4 pb-16 sm:px-6">
+          <h2 className="text-[20px] font-semibold tracking-tight">Aura and Apple Notes</h2>
+          <p className="mt-1.5 text-[13px] text-fg-muted">
+            Apple Notes is a good personal notebook. Here is where Aura is different.
           </p>
-        </div>
+          <div className="mt-6 overflow-x-auto rounded-lg border border-line">
+            <table className="w-full min-w-[480px] text-left text-[13px]">
+              <caption className="sr-only">Feature comparison between Aura and Apple Notes</caption>
+              <thead className="bg-sidebar text-[12px] text-fg-muted">
+                <tr>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Capability</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium text-fg">Aura</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Apple Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {COMPARE.map((r) => (
+                  <tr key={r.label}>
+                    <th scope="row" className="px-4 py-3 font-normal text-fg">{r.label}</th>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1.5 text-success">
+                        <Check size={14} /> <span className="sr-only">Yes</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-fg-muted">
+                      {r.apple === false ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Minus size={14} /> <span className="sr-only">No</span>
+                        </span>
+                      ) : (
+                        r.apple
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feat, idx) => {
-            const Icon = feat.icon;
-            return (
+        {/* Pricing */}
+        <section id="pricing" className="mx-auto max-w-6xl scroll-mt-16 px-4 pb-16 sm:px-6">
+          <h2 className="text-[26px] font-semibold tracking-tight">Plans</h2>
+          <p className="mt-2 text-[14px] text-fg-muted">Limits shown are the ones enforced in the app.</p>
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {tiers.map((t) => (
               <div
-                key={idx}
-                className={`p-6 rounded-2xl border transition-all hover:shadow-lg ${
-                  theme === "dark"
-                    ? "bg-[#101012] border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/20"
-                    : "bg-white border-slate-200/60 hover:border-blue-100 hover:shadow-slate-100"
-                }`}
+                key={t.id}
+                className={cn(
+                  "flex flex-col rounded-lg border bg-panel p-5",
+                  t.featured ? "border-accent shadow-soft" : "border-line",
+                )}
               >
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${feat.color} flex items-center justify-center mb-4 flex-shrink-0 shadow-sm`}>
-                  <Icon size={18} />
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[14px] font-semibold">{t.name}</h3>
+                  {t.featured && <Badge tone="accent">Most teams</Badge>}
                 </div>
-                <h3 className="font-display font-semibold text-sm text-slate-900 dark:text-white mb-2">
-                  {feat.title}
-                </h3>
-                <p className="text-[11.5px] leading-relaxed text-slate-500 dark:text-zinc-400">
-                  {feat.desc}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section id="testimonials-section" className={`py-20 px-4 sm:px-6 lg:px-8 ${theme === "dark" ? "bg-zinc-950/20 border-y border-zinc-800" : "bg-slate-50 border-y border-slate-100"}`}>
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full">
-              Customer Voices
-            </span>
-            <h2 className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-slate-900 dark:text-white mt-3">
-              Faved by developers & strategy consultants
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className={`p-6 rounded-2xl border ${theme === "dark" ? "bg-[#18181b]/50 border-zinc-800/80" : "bg-white border-slate-200"} flex flex-col justify-between`}>
-              <div>
-                <div className="flex gap-0.5 text-amber-500 mb-4">
-                  {[...Array(5)].map((_, i) => <Star key={i} size={14} className="fill-amber-500" />)}
-                </div>
-                <p className="text-xs sm:text-sm italic leading-relaxed text-slate-600 dark:text-zinc-300">
-                  "The offline-first synchronization on Aura is magic. I can write markdown specs during international flights, and the microsecond I land, they sync straight back to our local container systems. Aura AI's summary actions also extracted flawless action checklists for my product sprints!"
-                </p>
-              </div>
-              <div className="flex items-center gap-3 mt-6">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center font-bold text-white text-xs shadow-inner">
-                  SS
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-semibold text-xs text-slate-900 dark:text-white">Sarah Sterling</span>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500">Principal Architect, Stripe</span>
-                </div>
-              </div>
-            </div>
-
-            <div className={`p-6 rounded-2xl border ${theme === "dark" ? "bg-[#18181b]/50 border-zinc-800/80" : "bg-white border-slate-200"} flex flex-col justify-between`}>
-              <div>
-                <div className="flex gap-0.5 text-amber-500 mb-4">
-                  {[...Array(5)].map((_, i) => <Star key={i} size={14} className="fill-amber-500" />)}
-                </div>
-                <p className="text-xs sm:text-sm italic leading-relaxed text-slate-600 dark:text-zinc-300">
-                  "Command Palette shortcuts (⌘K) have transformed how I manage technical logs. Instant switching, tag generation via Gemini proxy, and custom folders allow me to maintain high-density information arrays without touching my trackpad once."
-                </p>
-              </div>
-              <div className="flex items-center gap-3 mt-6">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-500 to-purple-500 flex items-center justify-center font-bold text-white text-xs shadow-inner">
-                  MK
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-semibold text-xs text-slate-900 dark:text-white">Marcus Vance</span>
-                  <span className="text-[10px] text-slate-400 dark:text-zinc-500">Lead Systems Engineer, Linear</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Matrix */}
-      <section id="pricing-section" className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="text-center max-w-2xl mx-auto mb-16">
-          <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-purple-500 bg-purple-500/10 px-3 py-1 rounded-full">
-            Pricing Plans
-          </span>
-          <h2 className="font-display font-bold text-3xl sm:text-4xl tracking-tight text-slate-900 dark:text-white mt-3">
-            Simple, Transparent Subscription
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 mt-2">
-            No credit card required for Starter Sandbox. Zero hidden fees, cancel at any millisecond.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          {plans.map((plan, idx) => (
-            <div
-              key={idx}
-              className={`p-6 rounded-2xl border flex flex-col justify-between relative transition-all hover:-translate-y-1 ${
-                plan.popular
-                  ? "border-blue-500 bg-blue-500/[0.01] shadow-xl shadow-blue-500/5 ring-1 ring-blue-500"
-                  : theme === "dark"
-                  ? "bg-[#101012] border-zinc-800"
-                  : "bg-white border-slate-200"
-              }`}
-            >
-              {plan.popular && (
-                <span className="absolute top-0 right-6 -translate-y-1/2 px-2.5 py-0.5 bg-blue-500 text-white font-mono font-bold text-[9px] uppercase tracking-wider rounded-full">
-                  Highly Popular
-                </span>
-              )}
-
-              <div>
-                <span className="text-xs font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">{plan.name}</span>
-                <div className="flex items-baseline gap-1 mt-4">
-                  <span className="font-display font-extrabold text-4xl text-slate-900 dark:text-white">{plan.price}</span>
-                  {plan.period && <span className="text-xs text-slate-400 dark:text-zinc-500">{plan.period}</span>}
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-2 leading-relaxed">{plan.desc}</p>
-
-                <div className="h-px bg-slate-100 dark:bg-zinc-800/80 my-5"></div>
-
-                <ul className="flex flex-col gap-3">
-                  {plan.features.map((feat, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-[11px] leading-tight text-slate-600 dark:text-zinc-300">
-                      <CheckCircle2 size={13} className="text-emerald-500 flex-shrink-0 mt-0.5" />
-                      <span>{feat}</span>
+                <div className="mt-3 text-[26px] font-semibold tracking-tight">{t.price}</div>
+                <p className="mt-1 text-[13px] text-fg-muted">{t.blurb}</p>
+                <ul className="mt-5 flex-1 space-y-2">
+                  {t.lines.map((l) => (
+                    <li key={l} className="flex items-start gap-2 text-[13px]">
+                      <Check size={14} className="mt-0.5 shrink-0 text-success" /> {l}
                     </li>
                   ))}
                 </ul>
-              </div>
-
-              <button
-                onClick={plan.action}
-                className={`w-full py-2.5 mt-8 font-semibold text-xs rounded-xl transition-all cursor-pointer ${
-                  plan.popular
-                    ? "bg-blue-500 hover:bg-blue-600 text-white shadow-sm shadow-blue-500/10"
-                    : theme === "dark"
-                    ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-100"
-                    : "bg-slate-950 hover:bg-slate-900 text-white"
-                }`}
-              >
-                {plan.btnText}
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FAQs */}
-      <section id="faq-section" className="py-20 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto border-t border-slate-100 dark:border-zinc-800/60">
-        <div className="text-center mb-12">
-          <h2 className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-slate-900 dark:text-white">
-            Frequently Asked Queries
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 mt-1">
-            Need additional technical coordinates? Read through the matrix.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {faqs.map((faq, idx) => {
-            const isOpen = !!faqOpen[idx];
-            return (
-              <div
-                key={idx}
-                className={`border rounded-2xl overflow-hidden transition-all duration-150 ${
-                  theme === "dark" ? "bg-[#101012] border-zinc-800" : "bg-white border-slate-200"
-                }`}
-              >
-                <button
-                  onClick={() => toggleFaq(idx)}
-                  className="w-full p-4 flex justify-between items-center text-left text-xs sm:text-sm font-semibold text-slate-900 dark:text-zinc-100 cursor-pointer"
+                <Button
+                  variant={t.featured ? "primary" : "secondary"}
+                  size="lg"
+                  className="mt-6 w-full max-sm:h-11"
+                  onClick={() => onNavigateToAuth("register")}
                 >
-                  <span>{faq.q}</span>
-                  <ChevronDown size={14} className={`text-slate-400 dark:text-zinc-500 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                </button>
-                {isOpen && (
-                  <div className={`px-4 pb-4 text-[11.5px] leading-relaxed ${theme === "dark" ? "text-zinc-400" : "text-slate-600"}`}>
-                    {faq.a}
-                  </div>
-                )}
+                  {t.cta}
+                </Button>
               </div>
-            );
-          })}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      {/* Footer */}
-      <footer className={`border-t py-16 px-4 sm:px-6 lg:px-8 ${theme === "dark" ? "border-zinc-800 bg-[#070709]" : "border-slate-200 bg-slate-50"}`}>
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Aura Logo" className="w-7 h-7 object-contain" />
-              <span className="font-tomorrow font-bold text-sm tracking-tight bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent uppercase">
-                Aura Next
-              </span>
+        {/* FAQ */}
+        <section id="faq" className="mx-auto max-w-3xl scroll-mt-16 px-4 pb-20 sm:px-6">
+          <h2 className="text-[26px] font-semibold tracking-tight">Questions</h2>
+          <div className="mt-6 divide-y divide-line border-y border-line">
+            {FAQS.map((f, i) => {
+              const open = openFaq === i;
+              return (
+                <div key={f.q}>
+                  <h3>
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-controls={`faq-panel-${i}`}
+                      id={`faq-btn-${i}`}
+                      onClick={() => setOpenFaq(open ? null : i)}
+                      className="flex min-h-12 w-full items-center justify-between gap-4 py-3 text-left text-[14px] font-medium text-fg focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      {f.q}
+                      <ChevronDown
+                        size={16}
+                        className={cn("shrink-0 text-fg-subtle motion-safe:transition-transform", open && "rotate-180")}
+                      />
+                    </button>
+                  </h3>
+                  <div id={`faq-panel-${i}`} role="region" aria-labelledby={`faq-btn-${i}`} hidden={!open}>
+                    <p className="pb-4 text-[14px] leading-relaxed text-fg-muted">{f.a}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Closing CTA */}
+        <section className="border-t border-line bg-sidebar">
+          <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-4 py-10 sm:flex-row sm:items-center sm:px-6">
+            <div>
+              <h2 className="text-[20px] font-semibold tracking-tight">Start writing in a minute</h2>
+              <p className="mt-1 text-[13px] text-fg-muted">Create a workspace, or look around in the demo first.</p>
             </div>
-            <p className="text-[11px] leading-relaxed text-slate-400 dark:text-zinc-500 max-w-xs">
-              Refined strategy workspaces integrating robust offline duplication state engines and proxy-safe Gemini completions.
-            </p>
+            <div className="flex w-full gap-2.5 sm:w-auto">
+              <Button variant="primary" size="lg" onClick={() => onNavigateToAuth("register")} className="max-sm:h-11 max-sm:flex-1">
+                Get started
+              </Button>
+              <Button variant="secondary" size="lg" onClick={onEnterDemo} className="max-sm:h-11 max-sm:flex-1">
+                Try the demo
+              </Button>
+            </div>
           </div>
+        </section>
+      </main>
 
-          <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-zinc-300 mb-4">Product</h4>
-            <ul className="flex flex-col gap-2.5 text-[11px] text-slate-400 dark:text-zinc-500">
-              <li><a href="#features-section" className="hover:text-blue-500 transition-colors">Features</a></li>
-              <li><a href="#pricing-section" className="hover:text-blue-500 transition-colors">Pricing Matrix</a></li>
-              <li><a href="#testimonials-section" className="hover:text-blue-500 transition-colors">Client Reviews</a></li>
-              <li><button onClick={onEnterDemo} className="hover:text-blue-500 transition-colors cursor-pointer text-left">Live Sandbox</button></li>
-            </ul>
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-[13px] text-fg-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-center gap-3">
+            <Logo size={20} />
+            <span className="text-fg-subtle">&copy; {new Date().getFullYear()}</span>
           </div>
-
-          <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-zinc-300 mb-4">Integrations</h4>
-            <ul className="flex flex-col gap-2.5 text-[11px] text-slate-400 dark:text-zinc-500">
-              <li><span>PostgreSQL DB</span></li>
-              <li><span>Gemini Flash 3.5</span></li>
-              <li><span>Cloud SQL Core</span></li>
-              <li><span>Passkey Sign-in</span></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-zinc-300 mb-4">Newsletter</h4>
-            <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-3">Join our telemetry for major capabilities updates.</p>
-            <form onSubmit={(e) => { e.preventDefault(); alert("Thanks for joining Aura Next list!"); }} className="flex gap-1.5 w-full">
-              <input
-                type="email"
-                placeholder="developer@aura.io"
-                required
-                className={`text-[11px] px-3 py-2 rounded-lg border outline-none flex-grow min-w-0 ${
-                  theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700" : "bg-white border-slate-200 text-slate-700 focus:border-blue-400"
-                }`}
-              />
-              <button type="submit" className="px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center cursor-pointer shrink-0">
-                Join
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto pt-8 border-t border-slate-200/50 dark:border-zinc-800/60 flex flex-col sm:flex-row justify-between items-center text-center sm:text-left text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
-          <span>&copy; {new Date().getFullYear()} Aura Inc. All standard developer rights reserved.</span>
-          <div className="flex gap-4 mt-4 sm:mt-0">
-            <Link to="/network-status" className="hover:text-blue-500 transition-colors cursor-pointer text-blue-500 dark:text-blue-400 font-semibold">System Diagnostics</Link>
-            <Link to="/terms" className="hover:text-blue-500 transition-colors cursor-pointer">Terms of Service</Link>
-            <Link to="/privacy" className="hover:text-blue-500 transition-colors cursor-pointer">Privacy Policy</Link>
-          </div>
+          <nav aria-label="Footer" className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link to="/network-status" className="py-1 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent">
+              System status
+            </Link>
+            <Link to="/terms" className="py-1 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent">
+              Terms
+            </Link>
+            <Link to="/privacy" className="py-1 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent">
+              Privacy
+            </Link>
+          </nav>
         </div>
       </footer>
     </div>

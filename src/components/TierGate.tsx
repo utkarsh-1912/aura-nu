@@ -2,6 +2,7 @@ import React from "react";
 import { Lock, Sparkles, ArrowRight } from "lucide-react";
 import { UserTier } from "../types";
 import { TIER_LABELS } from "../lib/tierPermissions";
+import { Button } from "../ui";
 
 const TIER_RANK: Record<UserTier, number> = {
   personal: 0,
@@ -38,42 +39,28 @@ export default function TierGate({
   const defaultCta = `Upgrade to ${upgradeLabel}`;
 
   const UpgradeOverlay = () => (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl"
-      style={{ background: theme === 'dark' ? 'rgba(9,9,11,0.82)' : 'rgba(255,255,255,0.82)', backdropFilter: 'blur(6px)' }}>
-      <div className={`flex flex-col items-center gap-3 p-6 rounded-2xl border shadow-xl text-center max-w-xs
-        ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'}`}>
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center
-          ${requiredTier === 'enterprise'
-            ? 'bg-violet-100 dark:bg-violet-950/40'
-            : 'bg-blue-100 dark:bg-blue-950/40'}` }>
-          <Lock size={22} className={requiredTier === 'enterprise' ? 'text-violet-600' : 'text-blue-600'} />
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-lg bg-surface/90 p-4">
+      <div className="flex max-w-xs flex-col items-center gap-3 rounded-lg border border-line bg-raised p-5 text-center shadow-pop">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-soft">
+          <Lock size={18} className="text-accent" aria-hidden />
         </div>
         <div>
-          <p className={`text-sm font-semibold mb-1 ${theme === 'dark' ? 'text-zinc-100' : 'text-slate-900'}`}>
-            {upgradeLabel} Feature
-          </p>
-          <p className={`text-xs leading-relaxed ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-500'}`}>
-            This feature is available on the <strong>{upgradeLabel}</strong> plan and above.
+          <p className="mb-1 text-[14px] font-semibold text-fg">{upgradeLabel} feature</p>
+          <p className="text-[12px] leading-relaxed text-fg-muted">
+            This feature is available on the <strong className="font-semibold text-fg">{upgradeLabel}</strong> plan and above.
           </p>
         </div>
-        <button
-          onClick={onUpgrade}
-          className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all
-            ${requiredTier === 'enterprise'
-              ? 'bg-violet-600 hover:bg-violet-500 text-white'
-              : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
-          <Sparkles size={13} />
+        <Button variant="primary" size="md" onClick={onUpgrade} leadingIcon={<Sparkles size={13} />} trailingIcon={<ArrowRight size={13} />}>
           {ctaText || defaultCta}
-          <ArrowRight size={13} />
-        </button>
+        </Button>
       </div>
     </div>
   );
 
   if (blurContent) {
     return (
-      <div className="relative overflow-hidden rounded-xl">
-        <div className="pointer-events-none select-none" style={{ filter: 'blur(3px)', opacity: 0.4 }}>
+      <div className="relative overflow-hidden rounded-lg">
+        <div className="pointer-events-none select-none" style={{ filter: 'blur(3px)', opacity: 0.4 }} aria-hidden>
           {children}
         </div>
         <UpgradeOverlay />
@@ -82,7 +69,7 @@ export default function TierGate({
   }
 
   return (
-    <div className="relative rounded-xl">
+    <div className="relative rounded-lg">
       <UpgradeOverlay />
     </div>
   );

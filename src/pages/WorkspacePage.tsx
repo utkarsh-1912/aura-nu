@@ -1,3 +1,6 @@
+import { apiFetch } from "../lib/apiClient";
+import { useNoteSync } from "../hooks/useNoteSync";
+import { useFlowTriggers } from "../features/flows/useFlowTriggers";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
@@ -9,7 +12,18 @@ import SettingsModal from "../components/SettingsModal";
 import CommandPalette from "../components/CommandPalette";
 import TrashView from "../components/views/TrashView";
 import ArchiveView from "../components/views/ArchiveView";
+import { Avatar, Badge, Button, Dialog, EmptyState, IconButton, ToastViewport } from "../ui";
+import { Drawer, MobileTabBar, SwitchingOverlay, TopBar } from "../components/shell/Shell";
 
+import { useNoteIndexes } from "../features/indexes/useNoteIndexes";
+import { useTitleRename } from "../features/indexes/useTitleRename";
+import { loadSmartFolders, saveSmartFolders, upsertSmartFolder, removeSmartFolder, SMART_PREFIX, type SmartFolder } from "../features/smartFolders/store";
+import { useLaunchIntents } from "../features/pwa/useLaunchIntents";
+import { applyShare, quickNoteTitle, type SharePayload } from "../features/pwa/shareTarget";
+import { useDesktopBridge } from "../features/desktop/useDesktopBridge";
+import { makeNote, DEFAULT_FOLDER_ID } from "../features/noteUtils";
+import type { ImportPlan } from "../features/import/plan";
+import type { EditorExtras } from "../components/EditorArea";
 import { Note, Settings, Reminder, Activity, Workspace, WorkspaceType, Folder } from "../types";
 import { INITIAL_WORKSPACES, INITIAL_NOTES, INITIAL_REMINDERS, INITIAL_ACTIVITIES, DEFAULT_SETTINGS, getCleanInitialWorkspaces } from "../data";
 import {
@@ -65,6 +79,7 @@ export default function WorkspacePage({
   const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
 
   const [notes, setNotes] = useState<Note[]>([]);
+  const [notesHydratedFor, setNotesHydratedFor] = useState<string | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
 
@@ -312,7 +327,7 @@ export default function WorkspacePage({
       if (resizeRafId.current === null) {
         resizeRafId.current = requestAnimationFrame(() => {
           resizeRafId.current = null;
-          const sidebarWidth = isSidebarCollapsed ? 64 : 256;
+          const sidebarWidth = isSidebarCollapsed ? 56 : 240;
           let width = latestMouseXRef.current - sidebarWidth;
           
           if (width < 240) width = 240;
@@ -433,7 +448,7 @@ export default function WorkspacePage({
 
           if (e.altKey && e.key.toLowerCase() === "p") {
             e.preventDefault();
-            const nextStatus = currentActiveNote.status === "Published" ? "Draft" : "Published";
+            const nextStatus: Note["status"] = currentActiveNote.status === "Published" ? "Draft" : "Published";
             const updated = notes.map(n => n.id === activeNoteId ? { ...n, status: nextStatus, updatedAt: new Date().toISOString() } : n);
             handleUpdateNotesAndSync(updated);
             addToast(`Note status set to ${nextStatus}`, "success");
@@ -565,6 +580,7 @@ export default function WorkspacePage({
       });
     }
     setNotes(loadedNotes);
+    setNotesHydratedFor(userEmail); // same batch as setNotes: sync may start once this render commits
     localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(loadedNotes));
 
     if (localReminders) {
@@ -677,75 +693,36 @@ export default function WorkspacePage({
     }
   }, [notes, activeFolder, activeNoteId, activeWorkspaceId, navigate]);
 
-  const fetchNotesFromServer = async () => {
-    try {
-      const response = await fetch("/api/notes", {
-        headers: {
-          "X-User-Email": userEmail
-        }
-      });
-      const data = await response.json();
-      if (response.ok && data.notes) {
-        const serverNotes = data.notes;
-        const lastSync = Number(localStorage.getItem(`aura-last-sync-${userEmail}`) || "0");
-        const now = Date.now();
-        
-        setNotes((currentLocalNotes) => {
-          const validLocal = currentLocalNotes.map(n => n.workspaceId ? n : { ...n, workspaceId: "ws-aura-core" });
-          if (validLocal.length === 0) {
-            localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(serverNotes));
-            localStorage.setItem(`aura-last-sync-${userEmail}`, String(now));
-            return serverNotes;
-          }
+  // Notes sync: per-note v2 API with conflict-safe merging (see src/core/syncEngine.ts).
+  // Changes to `notes` are detected by diffing, so every mutation site is covered.
+  const noteSync = useNoteSync<Note>({
+    userEmail,
+    enabled: notesHydratedFor === userEmail,
+    notes,
+    setNotes,
+    onToast: addToast,
+  });
 
-          const localOnlyOrNewer: Note[] = [];
-          validLocal.forEach((lNote) => {
-            const sNote = serverNotes.find((n: Note) => n.id === lNote.id);
-            if (!sNote) {
-              const noteCreatedTime = new Date(lNote.createdAt || lNote.updatedAt).getTime();
-              if (lastSync === 0 || noteCreatedTime > lastSync) {
-                localOnlyOrNewer.push(lNote);
-              }
-            } else if (new Date(lNote.updatedAt).getTime() > new Date(sNote.updatedAt).getTime()) {
-              localOnlyOrNewer.push(lNote);
-            }
-          });
-
-          const finalMap = new Map<string, Note>();
-          serverNotes.forEach((sNote: Note) => finalMap.set(sNote.id, sNote));
-          localOnlyOrNewer.forEach((lNote) => finalMap.set(lNote.id, lNote));
-
-          const finalList = Array.from(finalMap.values());
-          localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(finalList));
-          localStorage.setItem(`aura-last-sync-${userEmail}`, String(now));
-
-          if (localOnlyOrNewer.length > 0) {
-            syncNotesToServer(finalList);
-          }
-
-          return finalList;
-        });
-
-        addToast("Redundant cloud synchronization complete", "info");
+  // Keep the offline cache equal to the in-memory list, including notes merged in by sync.
+  useEffect(() => {
+    if (notesHydratedFor !== userEmail) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(notes));
+      } catch (err) {
+        console.warn("Could not update offline notes cache:", err);
       }
-    } catch (error) {
-      console.warn("Express server offline, fallback to local storage cache:", error);
-    }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [notes, notesHydratedFor, userEmail]);
+
+  const fetchNotesFromServer = async () => {
+    await noteSync.syncNow();
   };
 
-  const syncNotesToServer = async (notesToSync: Note[]) => {
-    try {
-      await fetch("/api/notes", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "X-User-Email": userEmail
-        },
-        body: JSON.stringify({ notes: notesToSync }),
-      });
-    } catch (err) {
-      console.warn("Unable to sync notes to server, saving locally:", err);
-    }
+  // Kept so existing call sites compile; the sync hook now pushes changes itself.
+  const syncNotesToServer = (_notesToSync: Note[]) => {
+    void noteSync.syncNow();
   };
 
   const handleUpdateNotesAndSync = (newNotes: Note[]) => {
@@ -754,9 +731,17 @@ export default function WorkspacePage({
     syncNotesToServer(newNotes);
   };
 
+  // Workflow triggers (note.created/updated/tagged, schedules): enabled flows run while the app is open.
+  useFlowTriggers({
+    userEmail,
+    notes,
+    updateNotes: handleUpdateNotesAndSync,
+    enabled: notesHydratedFor === userEmail,
+  });
+
   const fetchFoldersFromServer = async () => {
     try {
-      const response = await fetch("/api/folders", {
+      const response = await apiFetch("/api/folders", {
         headers: {
           "X-User-Email": userEmail
         }
@@ -806,7 +791,7 @@ export default function WorkspacePage({
 
   const syncFoldersToServer = async (foldersToSync: Folder[]) => {
     try {
-      await fetch("/api/folders", {
+      await apiFetch("/api/folders", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -1188,7 +1173,7 @@ export default function WorkspacePage({
     const note = notes.find(n => n.id === noteId);
     if (!note) return;
     const nextArchived = !note.isArchived;
-    const updated = notes.map(n => n.id === noteId ? { ...n, isArchived: nextArchived, status: nextArchived ? "Archived" : (n.status === "Archived" ? "Draft" : n.status || "Draft"), updatedAt: new Date().toISOString() } : n);
+    const updated = notes.map(n => n.id === noteId ? { ...n, isArchived: nextArchived, status: (nextArchived ? "Archived" : (n.status === "Archived" ? "Draft" : n.status || "Draft")) as Note["status"], updatedAt: new Date().toISOString() } : n);
     handleUpdateNotesAndSync(updated);
     addToast(nextArchived ? `"${note.title}" archived` : `"${note.title}" restored from archive`, "success");
     if (nextArchived && activeNoteId === noteId) {
@@ -1357,6 +1342,77 @@ export default function WorkspacePage({
     const found = notes.find((n) => n.id === activeNoteId);
     return (found && found.workspaceId === activeWorkspaceId) ? found : null;
   }, [notes, activeNoteId, activeWorkspaceId]);
+
+  // ---- Indexes (backlinks, search), smart folders, link rename, launch intents, desktop bridge ----
+  const indexes = useNoteIndexes(notes, activeWorkspaceId, notesHydratedFor === userEmail);
+  const [smartFolders, setSmartFolders] = useState<SmartFolder[]>([]);
+  useEffect(() => { setSmartFolders(loadSmartFolders(userEmail)); }, [userEmail]);
+  const handleSaveSmartFolder = (sf: SmartFolder) => {
+    setSmartFolders((cur) => { const next = upsertSmartFolder(cur, sf); saveSmartFolders(userEmail, next); return next; });
+  };
+  const handleDeleteSmartFolder = (id: string) => {
+    setSmartFolders((cur) => { const next = removeSmartFolder(cur, id); saveSmartFolders(userEmail, next); return next; });
+    if (activeFolder === SMART_PREFIX + id) setActiveFolder("All Notes");
+  };
+
+  useTitleRename({
+    activeNote,
+    notes,
+    indexes,
+    applyNotes: handleUpdateNotesAndSync,
+    onRewritten: (n, t) => addToast(`Updated ${n} note${n === 1 ? "" : "s"} linking to "${t}"`, "info"),
+  });
+
+  const openNoteById = (id: string) => {
+    setActiveNoteId(id);
+    if (isMobile) setMobileTab("notes");
+  };
+  /** Create-on-click for unresolved [[links]]. */
+  const createNoteWithTitle = (title: string): string | undefined => {
+    const t = title.trim();
+    if (!t) return undefined;
+    const id = `note-${Date.now()}`;
+    const folder = activeNote?.folder || DEFAULT_FOLDER_ID;
+    handleUpdateNotesAndSync([makeNote({ id, workspaceId: activeWorkspaceId, title: t, content: "", folder, tags: [] }), ...notes]);
+    addToast(`Created "${t}"`, "success");
+    return id;
+  };
+  const handleImportPlan = (plan: ImportPlan) => {
+    if (plan.newFolders.length) handleUpdateFoldersAndSync([...folders, ...plan.newFolders]);
+    handleUpdateNotesAndSync([...plan.notes, ...notes]);
+    addToast(`Imported ${plan.notes.length} note${plan.notes.length === 1 ? "" : "s"}`, "success");
+  };
+  const newLocalId = () => `note-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  useLaunchIntents({
+    ready: notesHydratedFor === userEmail,
+    onNewNote: () => handleNewNote(),
+    onQuickNote: () => {
+      const id = newLocalId();
+      handleUpdateNotesAndSync([makeNote({ id, workspaceId: activeWorkspaceId, title: quickNoteTitle(), content: "", folder: DEFAULT_FOLDER_ID, tags: ["Quick"] }), ...notes]);
+      openNoteById(id);
+    },
+    onShare: (p: SharePayload) => {
+      const r = applyShare(notes, p, { workspaceId: activeWorkspaceId, folder: DEFAULT_FOLDER_ID, newId: newLocalId });
+      handleUpdateNotesAndSync(r.notes);
+      openNoteById(r.noteId);
+      addToast(r.skipped.length ? `Shared content saved. ${r.skipped[0]}` : "Shared content saved as a new note", r.skipped.length ? "info" : "success");
+    },
+  });
+  useDesktopBridge({
+    ready: notesHydratedFor === userEmail,
+    workspaceId: activeWorkspaceId,
+    notes,
+    folders,
+    applyNotes: handleUpdateNotesAndSync,
+    applyFolders: handleUpdateFoldersAndSync,
+    onQuickNote: (q) => {
+      const id = newLocalId();
+      handleUpdateNotesAndSync([makeNote({ id, workspaceId: activeWorkspaceId, title: q.title, content: q.content, folder: DEFAULT_FOLDER_ID, tags: ["Quick"], createdAt: q.createdAt, updatedAt: q.createdAt }), ...notes]);
+      addToast("Quick note saved", "success");
+    },
+    onError: (m) => addToast(m, "error"),
+  });
+  const workspaceNotesForEditor = useMemo(() => notes.filter((n) => n.workspaceId === activeWorkspaceId), [notes, activeWorkspaceId]);
 
   const prevActiveNoteIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1645,661 +1701,523 @@ export default function WorkspacePage({
     setTranscribedText("");
   };
 
+  const sidebarProps = {
+    notes: allWorkspaceNotes,
+    folders: workspaceFolders,
+    tags: tagsList,
+    activeFolder,
+    setActiveFolder,
+    activeTag,
+    setActiveTag,
+    onNewNote: handleNewNote,
+    activeNoteId,
+    setActiveNoteId,
+    onOpenSettings: () => setIsSettingsOpen(true),
+    onOpenCommandPalette: () => setIsCommandPaletteOpen(true),
+    theme: activeTheme,
+    currentUserEmail: userEmail,
+    workspaces,
+    activeWorkspaceId,
+    setActiveWorkspaceId: handleSelectWorkspace,
+    onCreateWorkspace: handleCreateWorkspace,
+    onDeleteWorkspace: handleDeleteWorkspace,
+    onTogglePinWorkspace: handleTogglePinWorkspace,
+    onToggleFavoriteWorkspace: handleToggleFavoriteWorkspace,
+    onNewFolder: handleNewFolder,
+    onRenameFolder: handleRenameFolder,
+    onDeleteFolder: handleDeleteFolder,
+    onMoveFolder: handleMoveFolder,
+    onUpdateFolderExpanded: handleUpdateFolderExpanded,
+    onMoveNotesToFolder: handleMoveNotesToFolder,
+    onToggleFavoriteNote: handleToggleFavoriteNote,
+    onToggleArchiveNote: handleToggleArchiveNote,
+    onDeleteNote: handleDeleteNote,
+    onSignOut,
+    isOnline,
+    smartFolders,
+    onSaveSmartFolder: handleSaveSmartFolder,
+    onDeleteSmartFolder: handleDeleteSmartFolder,
+  };
+
+  const cancelVoiceNote = () => {
+    setShowVoiceRecorder(false);
+    setVoiceTimer(0);
+    setTranscribedText("");
+  };
+
+  const dashboardEl = (onPick: (id: string) => void) => (
+    <Dashboard
+      notes={workspaceNotes}
+      setActiveNoteId={(id) => {
+        const targetNote = workspaceNotes.find((n) => n.id === id);
+        if (targetNote) {
+          setActiveFolder(targetNote.folder || "All Notes");
+        }
+        onPick(id);
+      }}
+      onNewNoteWithContent={handleNewNoteWithContent}
+      reminders={workspaceReminders}
+      onAddReminder={handleAddReminder}
+      onToggleReminder={handleToggleReminder}
+      onDeleteReminder={handleDeleteReminder}
+      activities={workspaceActivities}
+      theme={activeTheme}
+      workspaces={workspaces}
+      activeWorkspaceId={activeWorkspaceId}
+      onSelectWorkspace={handleSelectWorkspace}
+      onUpdateWorkspace={handleUpdateWorkspace}
+      onCopyNote={handleCopyNote}
+      onMoveNote={handleMoveNote}
+      onDuplicateNote={handleDuplicateNote}
+      onDeleteNote={handleDeleteNote}
+      currentUserEmail={userEmail}
+    />
+  );
+
+  const notesListEl = (width?: number) => (
+    <NotesList
+      indexes={indexes}
+      smartFolders={smartFolders}
+      activeWorkspaceId={activeWorkspaceId}
+      notes={allWorkspaceNotes}
+      folders={workspaceFolders}
+      activeNoteId={activeNoteId}
+      setActiveNoteId={setActiveNoteId}
+      activeFolder={activeFolder}
+      activeTag={activeTag}
+      setActiveTag={setActiveTag}
+      onNewNote={handleNewNote}
+      theme={activeTheme}
+      onBulkMoveNotes={handleMoveNotesToFolder}
+      onBulkDeleteNotes={handleBulkDeleteNotes}
+      onBulkArchiveNotes={handleBulkArchiveNotes}
+      onBulkFavoriteNotes={handleBulkFavoriteNotes}
+      onBulkDeletePermanently={handleBulkDeletePermanently}
+      onBulkRestoreNotes={handleBulkRestoreNotes}
+      onEmptyTrash={handleEmptyTrash}
+      width={width}
+      onTogglePinNote={handleTogglePinNote}
+      onToggleFavoriteNote={handleToggleFavoriteNote}
+      onDeleteNote={handleDeleteNote}
+    />
+  );
+
+  const editorEl = (onOpenAi: () => void) => (
+    <EditorArea
+      note={activeNote}
+      onUpdateNote={handleUpdateActiveNote}
+      onOpenAiAssistant={onOpenAi}
+      theme={activeTheme}
+      isAiPanelOpen={isAiPanelOpen}
+      onDeleteNote={handleDeleteNote}
+      onDuplicateNote={handleDuplicateNote}
+      onRestoreNote={handleRestoreNote}
+      onDeletePermanently={handleDeletePermanently}
+      onArchiveNote={handleToggleArchiveNote}
+      workspaces={workspaces}
+      activeWorkspaceId={activeWorkspaceId}
+      onMoveNote={handleMoveNote}
+      onCopyNote={handleCopyNote}
+      folders={workspaceFolders}
+      isFocusMode={isFocusMode}
+      setIsFocusMode={setIsFocusMode}
+      settings={settings}
+      extras={{
+        indexes,
+        workspaceNotes: workspaceNotesForEditor,
+        openNote: openNoteById,
+        createNoteWithTitle,
+        onBack: isMobile ? () => setActiveNoteId(null) : undefined,
+      } satisfies EditorExtras}
+    />
+  );
+
+  const aiPanelEl = (onClose: () => void, onSelectNote: (id: string) => void) => (
+    <AiPanel
+      note={activeNote}
+      onUpdateNote={handleUpdateActiveNote}
+      onClose={onClose}
+      theme={activeTheme}
+      onAddToast={addToast}
+      currentUserEmail={userEmail}
+      notes={notes}
+      folders={folders}
+      reminders={reminders}
+      activeWorkspaceId={activeWorkspaceId}
+      onUpdateNotes={handleUpdateNotesAndSync}
+      onUpdateFolders={handleUpdateFoldersAndSync}
+      onUpdateReminders={(updated) => {
+        setReminders(updated);
+        localStorage.setItem(`aura-reminders-${userEmail}`, JSON.stringify(updated));
+      }}
+      onSelectNote={onSelectNote}
+      onNavigateToAgentStudio={() => navigate("/org/org-aura-main/agents")}
+    />
+  );
+
+  const emptyPaneMeta: Record<string, { icon: React.ReactNode; title: string; description: string }> = {
+    Favorites: { icon: <Star size={18} />, title: "Favorite notes", description: "Select one of your favorite notes to start editing." },
+    Shared: { icon: <Share2 size={18} />, title: "Shared notes", description: "Select a shared note to view or copy the link." },
+    Drafts: { icon: <FileEdit size={18} />, title: "Draft notes", description: "Select a draft note to continue writing." },
+    Published: { icon: <Globe size={18} />, title: "Published notes", description: "Select a published note to manage publication or edit content." },
+  };
+  const emptyMeta = emptyPaneMeta[activeFolder] ?? {
+    icon: <FileText size={18} />,
+    title: folders.find((f) => f.id === activeFolder)?.name || activeFolder,
+    description: "Select a note from the list to view and edit its contents, or create a new note.",
+  };
+
+  const mobileTitle =
+    mobileTab === "home" ? "Home" : mobileTab === "notes" ? (activeNoteId ? "Note" : "Notes") : mobileTab === "ai" ? "AI co-pilot" : "More";
+
   return (
     <div
       id="aura-app-wrapper"
-      className="w-screen h-screen flex flex-col md:flex-row overflow-hidden font-sans transition-colors duration-200 bg-bg-primary text-text-primary"
+      className="flex h-dvh w-full overflow-hidden bg-surface font-sans text-fg"
     >
-      {/* Toast Notification Container */}
-      <div id="toast-notifications-rack" className="fixed bottom-20 md:bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border text-xs font-medium animate-slide-in pointer-events-auto ${
-              toast.type === "success"
-                ? "bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-zinc-900 dark:border-emerald-500/20 dark:text-emerald-400"
-                : toast.type === "error"
-                ? "bg-rose-50 border-rose-100 text-rose-800 dark:bg-zinc-900 dark:border-rose-500/20 dark:text-rose-400"
-                : "bg-white border-slate-200 text-slate-800 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-200"
-            }`}
-          >
-            <div className={`w-2 h-2 rounded-full ${
-              toast.type === "success" ? "bg-emerald-500" : toast.type === "error" ? "bg-rose-500" : "bg-blue-500"
-            }`}></div>
-            <span>{toast.text}</span>
-          </div>
-        ))}
-      </div>
+      <ToastViewport
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+      />
 
-      {/* MOBILE PORT LAYOUT */}
       {isMobile ? (
-        <div id="mobile-viewport" className={`flex-grow w-full h-full flex flex-col overflow-hidden ${(activeNoteId && mobileTab === "notes") ? "pb-0" : "pb-16"}`}>
-          <header className="px-4 py-3.5 border-b flex items-center justify-between select-none bg-bg-secondary/80 border-border-primary">
-             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsMobileSidebarOpen(true)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 dark:text-zinc-400 cursor-pointer"
-                title="Open Sidebar"
-              >
-                <Menu size={16} />
-              </button>
-              <span className="font-display font-bold text-xs tracking-tight">
-                {mobileTab === "home" && "Dashboard"}
-                {mobileTab === "notes" && (activeNoteId ? "Document Editor" : "Notes List")}
-                {mobileTab === "ai" && "Gemini Co-Pilot"}
-                {mobileTab === "settings" && "Aura Settings"}
-              </span>
-            </div>
-
-            {mobileTab === "notes" && activeNoteId && (
-              <button
-                onClick={() => setActiveNoteId(null)}
-                className="flex items-center gap-1 text-[11px] font-bold text-blue-500 py-1 px-2.5 rounded-lg bg-blue-500/10 cursor-pointer"
-              >
-                <ArrowLeft size={11} />
-                Exit Note
-              </button>
-            )}
-
-            {!activeNoteId && (
-              <button
-                onClick={() => setIsCommandPaletteOpen(true)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 dark:text-zinc-500 cursor-pointer"
-                title="Search Workspace"
-              >
-                <Search size={14} />
-              </button>
-            )}
-          </header>
-
-          <div className="flex-grow w-full overflow-hidden relative">
-            {/* Mobile Slide-in Drawer */}
-            {isMobileSidebarOpen && (
-              <div className="fixed inset-0 z-50 flex select-none">
-                {/* Backdrop */}
-                <div
-                  className="absolute inset-0 bg-black/40 backdrop-blur-xs"
-                  onClick={() => setIsMobileSidebarOpen(false)}
-                ></div>
-
-                {/* Sidebar Content container */}
-                <div
-                  className="relative w-72 max-w-[85%] h-full flex flex-col shadow-2xl border-r border-border-primary bg-bg-secondary text-text-primary transition-transform duration-300"
-                >
-                  <div className="flex-grow overflow-y-auto">
-                    <Sidebar
-                      onMobileClose={() => setIsMobileSidebarOpen(false)}
-                      notes={allWorkspaceNotes}
-                      folders={workspaceFolders}
-                      tags={tagsList}
-                      activeFolder={activeFolder}
-                      setActiveFolder={setActiveFolder}
-                      activeTag={activeTag}
-                      setActiveTag={setActiveTag}
-                      onNewNote={handleNewNote}
-                      activeNoteId={activeNoteId}
-                      setActiveNoteId={setActiveNoteId}
-                      onOpenSettings={() => setIsSettingsOpen(true)}
-                      onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-                      isSidebarCollapsed={false}
-                      setIsSidebarCollapsed={() => {}}
-                      theme={activeTheme}
-                      currentUserEmail={userEmail}
-                      workspaces={workspaces}
-                      activeWorkspaceId={activeWorkspaceId}
-                      setActiveWorkspaceId={handleSelectWorkspace}
-                      onCreateWorkspace={handleCreateWorkspace}
-                      onDeleteWorkspace={handleDeleteWorkspace}
-                      onTogglePinWorkspace={handleTogglePinWorkspace}
-                      onToggleFavoriteWorkspace={handleToggleFavoriteWorkspace}
-                      onNewFolder={handleNewFolder}
-                      onRenameFolder={handleRenameFolder}
-                      onDeleteFolder={handleDeleteFolder}
-                      onMoveFolder={handleMoveFolder}
-                      onUpdateFolderExpanded={handleUpdateFolderExpanded}
-                      onMoveNotesToFolder={handleMoveNotesToFolder}
-                      onToggleFavoriteNote={handleToggleFavoriteNote}
-                      onToggleArchiveNote={handleToggleArchiveNote}
-                      onDeleteNote={handleDeleteNote}
-                      onSignOut={onSignOut}
-                      isOnline={isOnline}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            {isTransitioning && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg-primary/90 backdrop-blur-xs transition-opacity duration-200">
-                <div className="w-8 h-8 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
-                <span className="text-[10px] font-mono tracking-widest text-slate-400 dark:text-zinc-500 uppercase mt-3">
-                  Switching Nodes...
-                </span>
-              </div>
-            )}
-
-            {mobileTab === "home" && (
-              <Dashboard
-                notes={workspaceNotes}
-                setActiveNoteId={(id) => {
-                  const targetNote = workspaceNotes.find((n) => n.id === id);
-                  if (targetNote) {
-                    setActiveFolder(targetNote.folder || "All Notes");
-                  }
-                  setActiveNoteId(id);
-                  setMobileTab("notes");
-                }}
-                onNewNoteWithContent={handleNewNoteWithContent}
-                reminders={workspaceReminders}
-                onAddReminder={handleAddReminder}
-                onToggleReminder={handleToggleReminder}
-                onDeleteReminder={handleDeleteReminder}
-                activities={workspaceActivities}
-                theme={activeTheme}
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onSelectWorkspace={handleSelectWorkspace}
-                onUpdateWorkspace={handleUpdateWorkspace}
-                onCopyNote={handleCopyNote}
-                onMoveNote={handleMoveNote}
-                onDuplicateNote={handleDuplicateNote}
-                onDeleteNote={handleDeleteNote}
-                currentUserEmail={userEmail}
-              />
-            )}
-
-            {mobileTab === "notes" && (
-              activeNoteId === null ? (
-                <NotesList
-                  notes={allWorkspaceNotes}
-                  folders={workspaceFolders}
-                  activeNoteId={activeNoteId}
-                  setActiveNoteId={setActiveNoteId}
-                  activeFolder={activeFolder}
-                  activeTag={activeTag}
-                  setActiveTag={setActiveTag}
-                  onNewNote={handleNewNote}
-                  theme={activeTheme}
-                  onBulkMoveNotes={handleMoveNotesToFolder}
-                  onBulkDeleteNotes={handleBulkDeleteNotes}
-                  onBulkArchiveNotes={handleBulkArchiveNotes}
-                  onBulkFavoriteNotes={handleBulkFavoriteNotes}
-                  onBulkDeletePermanently={handleBulkDeletePermanently}
-                  onBulkRestoreNotes={handleBulkRestoreNotes}
-                  onEmptyTrash={handleEmptyTrash}
-                  onTogglePinNote={handleTogglePinNote}
-                  onToggleFavoriteNote={handleToggleFavoriteNote}
-                  onDeleteNote={handleDeleteNote}
-                />
+        /* PHONE: single pane + bottom tab bar */
+        <div id="mobile-viewport" className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+          <TopBar
+            title={mobileTitle}
+            leading={
+              mobileTab === "notes" && activeNoteId ? (
+                <IconButton label="Back to notes" size="lg" onClick={() => setActiveNoteId(null)}>
+                  <ArrowLeft size={18} />
+                </IconButton>
               ) : (
-                <EditorArea
-                  note={activeNote}
-                  onUpdateNote={handleUpdateActiveNote}
-                  onOpenAiAssistant={() => setMobileTab("ai")}
-                  theme={activeTheme}
-                  isAiPanelOpen={isAiPanelOpen}
-                  onDeleteNote={handleDeleteNote}
-                  onDuplicateNote={handleDuplicateNote}
-                  onRestoreNote={handleRestoreNote}
-                  onDeletePermanently={handleDeletePermanently}
-                  onArchiveNote={handleToggleArchiveNote}
-                  workspaces={workspaces}
-                  activeWorkspaceId={activeWorkspaceId}
-                  onMoveNote={handleMoveNote}
-                  onCopyNote={handleCopyNote}
-                  folders={workspaceFolders}
-                  isFocusMode={isFocusMode}
-                  setIsFocusMode={setIsFocusMode}
-                  settings={settings}
-                />
+                <IconButton label="Open sidebar" size="lg" onClick={() => setIsMobileSidebarOpen(true)}>
+                  <Menu size={18} />
+                </IconButton>
               )
-            )}
+            }
+            trailing={
+              !activeNoteId && (
+                <IconButton label="Search workspace" size="lg" onClick={() => setIsCommandPaletteOpen(true)}>
+                  <Search size={18} />
+                </IconButton>
+              )
+            }
+          />
 
-            {mobileTab === "ai" && (
-              <AiPanel
-                note={activeNote}
-                onUpdateNote={handleUpdateActiveNote}
-                onClose={() => setMobileTab("notes")}
-                theme={activeTheme}
-                onAddToast={addToast}
-                currentUserEmail={userEmail}
+          <div className="relative min-h-0 w-full flex-1 overflow-hidden">
+            <Drawer open={isMobileSidebarOpen} onClose={() => setIsMobileSidebarOpen(false)} label="Sidebar">
+              <Sidebar
+                {...sidebarProps}
+                onMobileClose={() => setIsMobileSidebarOpen(false)}
+                isSidebarCollapsed={false}
+                setIsSidebarCollapsed={() => {}}
               />
-            )}
+            </Drawer>
 
-            {mobileTab === "settings" && (
-              <div className="h-full overflow-y-auto p-4 flex flex-col gap-6 text-xs">
-                <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center font-bold text-white text-sm">
-                    {userEmail[0].toUpperCase()}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-bold text-slate-800 dark:text-zinc-100">{userEmail.split("@")[0]}</span>
-                    <span className="text-[10px] text-slate-400">{userEmail}</span>
-                  </div>
-                </div>
+            {isTransitioning && <SwitchingOverlay label="Switching workspace..." />}
 
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className={`p-3.5 rounded-xl border flex items-center justify-between font-bold ${
-                      activeTheme === "dark" ? "bg-zinc-900 border-zinc-800" : "bg-white border-slate-200"
-                    } cursor-pointer`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <SettingsIcon size={14} className="text-blue-500" />
-                      <span>Adjust Settings Panel</span>
-                    </div>
-                    <span className="text-slate-400 text-[10px]">Open Settings</span>
-                  </button>
+            {mobileTab === "home" &&
+              dashboardEl((id) => {
+                setActiveNoteId(id);
+                setMobileTab("notes");
+              })}
 
-                  <button
-                    onClick={onSignOut}
-                    className="p-3.5 rounded-xl border flex items-center justify-between font-bold border-rose-500/20 bg-rose-500/5 text-rose-500 cursor-pointer"
-                  >
-                    <span>Sign Out from Workspace</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+            {mobileTab === "notes" &&
+              (activeNoteId === null ? notesListEl() : editorEl(() => setMobileTab("ai")))}
 
-          {(!activeNoteId || mobileTab === "home") && (
-            <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-3 select-none">
-              {isFabOpen && (
-                <div className="p-1.5 rounded-2xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-1 shadow-2xl transition-all">
-                  <button
-                    onClick={handleNewNote}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 text-left w-full cursor-pointer"
-                  >
-                    <Plus size={13} className="text-blue-500" />
-                    New Text Note
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowVoiceRecorder(true);
-                      setIsFabOpen(false);
-                    }}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 text-left w-full cursor-pointer"
-                  >
-                    <Mic size={13} className="text-purple-500" />
-                    Voice Memo (AI Transcribe)
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowDrawingPad(true);
-                      setIsFabOpen(false);
-                    }}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 text-left w-full cursor-pointer"
-                  >
-                    <PenTool size={13} className="text-pink-500" />
-                    Quick Sketch Pad
-                  </button>
-                </div>
+            {mobileTab === "ai" &&
+              aiPanelEl(
+                () => setMobileTab("notes"),
+                (noteId) => {
+                  setActiveNoteId(noteId);
+                  setMobileTab("notes");
+                },
               )}
 
-              <button
-                onClick={() => setIsFabOpen(!isFabOpen)}
-                className="w-12 h-12 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
-              >
-                {isFabOpen ? <X size={18} /> : <Plus size={18} />}
-              </button>
-            </div>
-          )}
+            {mobileTab === "settings" && (
+              <div className="h-full overflow-y-auto p-4">
+                <div className="mx-auto flex max-w-md flex-col gap-4">
+                  <div className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3">
+                    <Avatar name={userEmail.split("@")[0] || "User"} size={40} />
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate text-[14px] font-medium text-fg">{userEmail.split("@")[0]}</span>
+                      <span className="truncate text-[12px] text-fg-muted">{userEmail}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="secondary"
+                      size="lg"
+                      className="!justify-start"
+                      leadingIcon={<Home size={16} />}
+                      onClick={() => {
+                        setActiveFolder("Dashboard");
+                        setMobileTab("home");
+                      }}
+                    >
+                      Home dashboard
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="lg"
+                      className="!justify-start"
+                      leadingIcon={<SettingsIcon size={16} />}
+                      onClick={() => setIsSettingsOpen(true)}
+                    >
+                      Settings
+                    </Button>
+                    <Button variant="danger" size="lg" onClick={onSignOut}>
+                      Sign out
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {(!activeNoteId || mobileTab !== "notes") && (
-            <nav className="fixed bottom-0 left-0 right-0 h-16 border-t border-border-primary bg-bg-secondary/95 flex items-center justify-around z-30 shadow-md">
-            {[
-              { id: "home", label: "Home", icon: Home },
-              { id: "notes", label: "Notes", icon: FileText },
-              { id: "ai", label: "Co-Pilot", icon: Sparkles },
-              { id: "settings", label: "Settings", icon: SettingsIcon },
-            ].map((tab) => {
-              const isSelected = mobileTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    if (mobileTab === "notes" && tab.id === "notes") {
-                      setActiveNoteId(null);
-                    }
-                    setMobileTab(tab.id as any);
-                    if (tab.id !== "notes") {
-                      setActiveNoteId(null);
-                    }
-                  }}
-                  className={`flex flex-col items-center justify-center py-1 flex-1 cursor-pointer min-h-[44px] ${
-                    isSelected
-                      ? "text-blue-500"
-                      : "text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-400"
-                  }`}
-                >
-                  <tab.icon size={16} />
-                  <span className="text-[10px] font-semibold mt-1 tracking-tight">{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+            <MobileTabBar
+              active={mobileTab}
+              onNotes={() => {
+                setActiveNoteId(null);
+                setMobileTab("notes");
+              }}
+              onSearch={() => setIsCommandPaletteOpen(true)}
+              onNew={() => setIsFabOpen(true)}
+              onAi={() => {
+                setActiveNoteId(null);
+                setMobileTab("ai");
+              }}
+              onMore={() => {
+                setActiveNoteId(null);
+                setMobileTab("settings");
+              }}
+            />
           )}
         </div>
       ) : (
-        /* DESKTOP / TABLET LAYOUT */
-        <>
-          {!isFocusMode && (
-            <Sidebar
-              notes={allWorkspaceNotes}
-              folders={workspaceFolders}
-              tags={tagsList}
-              activeFolder={activeFolder}
-              setActiveFolder={setActiveFolder}
-              activeTag={activeTag}
-              setActiveTag={setActiveTag}
-              onNewNote={handleNewNote}
-              activeNoteId={activeNoteId}
-              setActiveNoteId={setActiveNoteId}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-              isSidebarCollapsed={isSidebarCollapsed}
-              setIsSidebarCollapsed={setIsSidebarCollapsed}
-              theme={activeTheme}
-              currentUserEmail={userEmail}
-              workspaces={workspaces}
-              activeWorkspaceId={activeWorkspaceId}
-              setActiveWorkspaceId={handleSelectWorkspace}
-              onCreateWorkspace={handleCreateWorkspace}
-              onDeleteWorkspace={handleDeleteWorkspace}
-              onTogglePinWorkspace={handleTogglePinWorkspace}
-              onToggleFavoriteWorkspace={handleToggleFavoriteWorkspace}
-              onNewFolder={handleNewFolder}
-              onRenameFolder={handleRenameFolder}
-              onDeleteFolder={handleDeleteFolder}
-              onMoveFolder={handleMoveFolder}
-              onUpdateFolderExpanded={handleUpdateFolderExpanded}
-              onMoveNotesToFolder={handleMoveNotesToFolder}
-              onToggleFavoriteNote={handleToggleFavoriteNote}
-              onToggleArchiveNote={handleToggleArchiveNote}
-              onDeleteNote={handleDeleteNote}
-              onSignOut={onSignOut}
-              isOnline={isOnline}
+        /* TABLET + DESKTOP */
+        <div className="flex h-full min-w-0 flex-1 flex-col">
+          {isTablet && !isFocusMode && (
+            <TopBar
+              title={folders.find((f) => f.id === activeFolder)?.name || activeFolder}
+              leading={
+                <IconButton label="Open sidebar" size="lg" onClick={() => setIsMobileSidebarOpen(true)}>
+                  <Menu size={18} />
+                </IconButton>
+              }
+              trailing={
+                <>
+                  <IconButton label="Search and commands" size="lg" onClick={() => setIsCommandPaletteOpen(true)}>
+                    <Search size={18} />
+                  </IconButton>
+                  <Button variant="primary" onClick={handleNewNote} leadingIcon={<Plus size={14} />}>
+                    New note
+                  </Button>
+                </>
+              }
             />
           )}
 
-          {!isFocusMode && activeFolder !== "Dashboard" && (
-            <NotesList
-              notes={allWorkspaceNotes}
-              folders={workspaceFolders}
-              activeNoteId={activeNoteId}
-              setActiveNoteId={setActiveNoteId}
-              activeFolder={activeFolder}
-              activeTag={activeTag}
-              setActiveTag={setActiveTag}
-              onNewNote={handleNewNote}
-              theme={activeTheme}
-              onBulkMoveNotes={handleMoveNotesToFolder}
-              onBulkDeleteNotes={handleBulkDeleteNotes}
-              onBulkArchiveNotes={handleBulkArchiveNotes}
-              onBulkFavoriteNotes={handleBulkFavoriteNotes}
-              onBulkDeletePermanently={handleBulkDeletePermanently}
-              onBulkRestoreNotes={handleBulkRestoreNotes}
-              onEmptyTrash={handleEmptyTrash}
-              width={notesListWidth}
-              onTogglePinNote={handleTogglePinNote}
-              onToggleFavoriteNote={handleToggleFavoriteNote}
-              onDeleteNote={handleDeleteNote}
-            />
-          )}
-
-          {!isFocusMode && activeFolder !== "Dashboard" && (
-            <div
-              className="w-1.5 h-full hover:bg-blue-500/20 active:bg-blue-500/40 cursor-col-resize transition-colors flex-shrink-0 select-none flex items-center justify-center relative z-40"
-              onMouseDown={handleNotesListResizeMouseDown}
-            >
-              <div className="w-[1px] h-full bg-slate-200 dark:bg-zinc-800/80 hover:bg-blue-500"></div>
-            </div>
-          )}
-
-          <div id="main-content-pane" className="flex-grow h-full flex overflow-hidden min-w-0 relative">
-            {isTransitioning && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-bg-primary/90 backdrop-blur-xs transition-opacity duration-200">
-                <div className="w-8 h-8 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
-                <span className="text-[10px] font-mono tracking-widest text-slate-400 dark:text-zinc-500 uppercase mt-3">
-                  Syncing Workspace Node...
-                </span>
-              </div>
-            )}
-
-            {activeFolder === "Dashboard" ? (
-              <Dashboard
-                notes={workspaceNotes}
-                setActiveNoteId={(id) => {
-                  const targetNote = workspaceNotes.find((n) => n.id === id);
-                  if (targetNote) {
-                    setActiveFolder(targetNote.folder || "All Notes");
-                  }
-                  setActiveNoteId(id);
-                }}
-                onNewNoteWithContent={handleNewNoteWithContent}
-                reminders={workspaceReminders}
-                onAddReminder={handleAddReminder}
-                onToggleReminder={handleToggleReminder}
-                onDeleteReminder={handleDeleteReminder}
-                activities={workspaceActivities}
-                theme={activeTheme}
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onSelectWorkspace={handleSelectWorkspace}
-                onUpdateWorkspace={handleUpdateWorkspace}
-                onCopyNote={handleCopyNote}
-                onMoveNote={handleMoveNote}
-                onDuplicateNote={handleDuplicateNote}
-                onDeleteNote={handleDeleteNote}
-                currentUserEmail={userEmail}
-              />
-            ) : activeNoteId === null ? (
-              activeFolder === "Trash" ? (
-                <TrashView
-                  hasNotes={allWorkspaceNotes.some(n => n.isTrashed)}
-                  onEmptyTrash={handleEmptyTrash}
+          <div className="flex min-h-0 flex-1">
+            {isTablet && (
+              <Drawer open={isMobileSidebarOpen} onClose={() => setIsMobileSidebarOpen(false)} label="Sidebar">
+                <Sidebar
+                  {...sidebarProps}
+                  onMobileClose={() => setIsMobileSidebarOpen(false)}
+                  isSidebarCollapsed={false}
+                  setIsSidebarCollapsed={() => {}}
                 />
-              ) : activeFolder === "Archive" ? (
-                <ArchiveView />
-              ) : (
-                <div className="flex-grow h-full flex flex-col items-center justify-center p-8 text-center bg-bg-primary text-text-primary select-none animate-fade-in">
-                  <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-zinc-900/60 flex items-center justify-center mb-4 text-slate-400 dark:text-zinc-500">
-                    {activeFolder === "Favorites" ? (
-                      <Star size={28} className="text-yellow-500 fill-yellow-500/10" />
-                    ) : activeFolder === "Shared" ? (
-                      <Share2 size={28} className="text-blue-500" />
-                    ) : activeFolder === "Drafts" ? (
-                      <FileEdit size={28} className="text-amber-500" />
-                    ) : activeFolder === "Published" ? (
-                      <Globe size={28} className="text-emerald-500" />
-                    ) : (
-                      <FileText size={28} className="text-slate-500" />
-                    )}
-                  </div>
-                  <h3 className="font-display font-semibold text-slate-800 dark:text-zinc-200 text-base mb-1">
-                    {activeFolder === "Favorites"
-                      ? "Favorite Notes"
-                      : activeFolder === "Drafts"
-                      ? "Draft Notes"
-                      : activeFolder === "Published"
-                      ? "Published Notes"
-                      : activeFolder === "Shared"
-                      ? "Shared Notes"
-                      : (folders.find((f) => f.id === activeFolder)?.name || activeFolder)}
-                  </h3>
-                  <p className="text-xs text-slate-400 dark:text-zinc-500 max-w-xs leading-relaxed">
-                    {activeFolder === "Favorites"
-                      ? "Select one of your favorite notes to start editing."
-                      : activeFolder === "Drafts"
-                      ? "Select a draft note to continue writing."
-                      : activeFolder === "Published"
-                      ? "Select a published note to manage publication or edit content."
-                      : activeFolder === "Shared"
-                      ? "Select a shared note to view or copy the link."
-                      : "Select a note from the list to view and edit its contents, or create a new note."}
-                  </p>
-                  <button
-                    onClick={handleNewNote}
-                    className="mt-5 px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 animate-bounce-slow"
-                  >
-                    <Plus size={14} />
-                    <span>Create New Note</span>
-                  </button>
-                </div>
-              )
-            ) : (
-              <EditorArea
-                note={activeNote}
-                onUpdateNote={handleUpdateActiveNote}
-                onOpenAiAssistant={() => setIsAiPanelOpen(true)}
-                theme={activeTheme}
-                isAiPanelOpen={isAiPanelOpen}
-                onDeleteNote={handleDeleteNote}
-                onDuplicateNote={handleDuplicateNote}
-                onRestoreNote={handleRestoreNote}
-                onDeletePermanently={handleDeletePermanently}
-                onArchiveNote={handleToggleArchiveNote}
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onMoveNote={handleMoveNote}
-                onCopyNote={handleCopyNote}
-                folders={workspaceFolders}
-                isFocusMode={isFocusMode}
-                setIsFocusMode={setIsFocusMode}
-                settings={settings}
-              />
+              </Drawer>
             )}
 
-            {isAiPanelOpen && activeFolder !== "Dashboard" && activeNoteId !== null && !isFocusMode && (
-              <AiPanel
-                note={activeNote}
-                onUpdateNote={handleUpdateActiveNote}
-                onClose={() => setIsAiPanelOpen(false)}
-                theme={activeTheme}
-                onAddToast={addToast}
-                currentUserEmail={userEmail}
-              />
+            {!isTablet && !isFocusMode && (
+              <Sidebar {...sidebarProps} isSidebarCollapsed={isSidebarCollapsed} setIsSidebarCollapsed={setIsSidebarCollapsed} />
             )}
-          </div>
-        </>
-      )}
 
-      {/* GLOBAL SHARED SIMULATED DIALOGS & OVERLAYS */}
+            {!isFocusMode && activeFolder !== "Dashboard" && notesListEl(isTablet ? Math.min(notesListWidth, 320) : notesListWidth)}
 
-      {/* 1. Real browser-based Voice Recorder / Speech-to-Text overlay */}
-      {showVoiceRecorder && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowVoiceRecorder(false);
-            }
-          }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer animate-modal-backdrop"
-        >
-          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary text-center flex flex-col items-center shadow-2xl cursor-default gap-3 animate-modal-content">
-            <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 w-16 h-16 rounded-full border border-red-500/30 animate-ping"></div>
-              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-red-500/10 text-red-500 animate-pulse relative">
-                <Mic size={24} />
+            {!isFocusMode && activeFolder !== "Dashboard" && !isTablet && (
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize notes list"
+                aria-valuenow={notesListWidth}
+                aria-valuemin={240}
+                aria-valuemax={480}
+                tabIndex={0}
+                onMouseDown={handleNotesListResizeMouseDown}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft") setNotesListWidth((w) => Math.max(240, w - 16));
+                  if (e.key === "ArrowRight") setNotesListWidth((w) => Math.min(480, w + 16));
+                }}
+                className="group relative z-40 -ml-px h-full w-1 shrink-0 cursor-col-resize select-none outline-none"
+              >
+                <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-accent group-focus-visible:bg-accent group-active:bg-accent" />
               </div>
-            </div>
+            )}
 
-            <h4 className="font-semibold text-sm">🎙️ Live Browser Speech-to-Text</h4>
-            <span className="text-[10px] font-mono text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-md">
-              Recording Duration: {voiceTimer}s
-            </span>
+            <div id="main-content-pane" className="relative flex h-full min-w-0 flex-1 overflow-hidden bg-surface">
+              {isTransitioning && <SwitchingOverlay label="Syncing workspace..." />}
 
-            <div className="w-full h-32 overflow-y-auto mt-2 p-3 rounded-xl border border-border-primary bg-bg-primary text-left text-xs leading-relaxed font-sans select-text">
-              {transcribedText}
-            </div>
+              {activeFolder === "Dashboard" ? (
+                dashboardEl((id) => setActiveNoteId(id))
+              ) : activeNoteId === null ? (
+                activeFolder === "Trash" ? (
+                  <TrashView hasNotes={allWorkspaceNotes.some((n) => n.isTrashed)} onEmptyTrash={handleEmptyTrash} />
+                ) : activeFolder === "Archive" ? (
+                  <ArchiveView />
+                ) : (
+                  <div className="flex h-full flex-1 select-none items-center justify-center bg-surface">
+                    <EmptyState
+                      icon={emptyMeta.icon}
+                      title={emptyMeta.title}
+                      description={emptyMeta.description}
+                      action={
+                        <Button variant="primary" onClick={handleNewNote} leadingIcon={<Plus size={14} />}>
+                          New note
+                        </Button>
+                      }
+                    />
+                  </div>
+                )
+              ) : (
+                editorEl(() => setIsAiPanelOpen(true))
+              )}
 
-            <div className="flex gap-2 w-full mt-2">
-              <button
-                onClick={() => {
-                  setShowVoiceRecorder(false);
-                  setVoiceTimer(0);
-                  setTranscribedText("");
-                }}
-                className="flex-grow py-2 border border-border-primary bg-bg-primary hover:bg-bg-secondary text-text-secondary hover:text-text-primary text-xs font-semibold rounded-xl cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveVoiceNote}
-                className="flex-grow py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-xl cursor-pointer"
-              >
-                Save to Note
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Drawing Scratchpad overlay */}
-      {showDrawingPad && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowDrawingPad(false);
-            }
-          }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none p-4 cursor-pointer animate-modal-backdrop"
-        >
-          <div className="w-full max-w-md p-6 rounded-3xl border border-border-primary bg-bg-secondary text-text-primary flex flex-col gap-4 shadow-2xl cursor-default animate-modal-content">
-            <div className="flex justify-between items-center">
-              <h4 className="font-semibold text-sm">Quick Drawing Scratchpad</h4>
-              <button
-                onClick={() => setShowDrawingPad(false)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <p className="text-[10.5px] text-slate-400 leading-snug">
-              Doodle your strategy layouts, product mockups, or sign-offs below using touch gestures.
-            </p>
-
-            <canvas
-              ref={canvasRef}
-              width={360}
-              height={180}
-              onMouseDown={startDrawing}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onMouseMove={draw}
-              onTouchStart={startDrawing}
-              onTouchEnd={stopDrawing}
-              onTouchMove={draw}
-              className="w-full h-[180px] rounded-xl border border-dashed border-border-primary bg-bg-primary cursor-crosshair outline-none"
-            ></canvas>
-
-            <div className="flex gap-2 justify-end mt-2">
-              <button
-                onClick={() => {
-                  const canvas = canvasRef.current;
-                  const ctx = canvas?.getContext("2d");
-                  if (canvas && ctx) {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                  }
-                }}
-                className="px-3 py-2 border border-border-primary bg-bg-primary hover:bg-bg-secondary text-text-secondary hover:text-text-primary text-[11px] font-semibold rounded-lg cursor-pointer transition-colors"
-              >
-                Clear Sketch
-              </button>
-
-              <button
-                onClick={handleSaveDrawing}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg text-[11px] cursor-pointer"
-              >
-                Save Sketch to Note
-              </button>
+              {isAiPanelOpen &&
+                activeFolder !== "Dashboard" &&
+                !isFocusMode &&
+                aiPanelEl(
+                  () => setIsAiPanelOpen(false),
+                  (noteId) => setActiveNoteId(noteId),
+                )}
             </div>
           </div>
         </div>
       )}
 
-      {/* 3. SETTINGS DIALOG MODAL */}
+      {/* Quick create sheet (phone) */}
+      <Dialog open={isFabOpen} onClose={() => setIsFabOpen(false)} title="Create" size="sm">
+        <div className="flex flex-col gap-2 pb-1">
+          <Button
+            variant="secondary"
+            size="lg"
+            className="!justify-start"
+            leadingIcon={<Plus size={16} />}
+            onClick={() => {
+              handleNewNote();
+              setIsFabOpen(false);
+            }}
+          >
+            New text note
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
+            className="!justify-start"
+            leadingIcon={<Mic size={16} />}
+            onClick={() => {
+              setShowVoiceRecorder(true);
+              setIsFabOpen(false);
+            }}
+          >
+            Voice memo (AI transcribe)
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
+            className="!justify-start"
+            leadingIcon={<PenTool size={16} />}
+            onClick={() => {
+              setShowDrawingPad(true);
+              setIsFabOpen(false);
+            }}
+          >
+            Quick sketch pad
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Voice recorder / speech-to-text */}
+      <Dialog
+        open={showVoiceRecorder}
+        onClose={cancelVoiceNote}
+        title="Voice memo"
+        description="Live browser speech-to-text. Speak and the transcript appears below."
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={cancelVoiceNote}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveVoiceNote}>
+              Save to note
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-danger-soft text-danger">
+            <span className="absolute inset-0 rounded-full border border-danger/40 motion-safe:animate-ping" aria-hidden />
+            <Mic size={20} />
+          </div>
+          <Badge tone="danger">Recording {voiceTimer}s</Badge>
+          <div
+            aria-live="polite"
+            className="h-32 w-full select-text overflow-y-auto rounded-lg border border-line bg-panel p-3 text-left text-[13px] leading-relaxed text-fg"
+          >
+            {transcribedText || <span className="text-fg-subtle">Listening...</span>}
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Drawing scratchpad */}
+      <Dialog
+        open={showDrawingPad}
+        onClose={() => setShowDrawingPad(false)}
+        title="Quick sketch"
+        description="Doodle layouts or mockups with mouse or touch."
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                const canvas = canvasRef.current;
+                const ctx = canvas?.getContext("2d");
+                if (canvas && ctx) {
+                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+              }}
+            >
+              Clear
+            </Button>
+            <Button variant="primary" onClick={handleSaveDrawing}>
+              Save sketch to note
+            </Button>
+          </>
+        }
+      >
+        <canvas
+          ref={canvasRef}
+          width={360}
+          height={180}
+          aria-label="Sketch canvas"
+          onMouseDown={startDrawing}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
+          onMouseMove={draw}
+          onTouchStart={startDrawing}
+          onTouchEnd={stopDrawing}
+          onTouchMove={draw}
+          className="h-[180px] w-full cursor-crosshair touch-none rounded-lg border border-dashed border-line-strong bg-panel outline-none"
+        ></canvas>
+      </Dialog>
+
+      {/* Settings dialog */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -2312,26 +2230,22 @@ export default function WorkspacePage({
         setTheme={setTheme}
         currentUserEmail={userEmail}
         notes={notes}
+        importContext={{ workspaceId: activeWorkspaceId, folders: workspaceFolders, onImport: handleImportPlan }}
         onForceSync={async () => {
           await fetchNotesFromServer();
           await fetchFoldersFromServer();
         }}
         onClearCache={async () => {
-          localStorage.removeItem(`aura-notes-backup-${userEmail}`);
-          localStorage.removeItem(`aura-folders-backup-${userEmail}`);
-          localStorage.setItem(`aura-last-sync-${userEmail}`, "0");
-          localStorage.setItem(`aura-last-sync-folders-${userEmail}`, "0");
-          
-          const response = await fetch("/api/notes", {
-            headers: { "X-User-Email": userEmail }
-          });
-          const data = await response.json();
-          if (response.ok && data.notes) {
-            setNotes(data.notes);
-            localStorage.setItem(`aura-notes-backup-${userEmail}`, JSON.stringify(data.notes));
+          // Push any pending edits first; abort (keeping local data) if that is not possible.
+          const ok = await noteSync.resetAndPull();
+          if (!ok) {
+            addToast("Could not upload pending changes, so the local cache was kept.", "error");
+            return;
           }
-          
-          const responseFolders = await fetch("/api/folders", {
+          localStorage.removeItem(`aura-folders-backup-${userEmail}`);
+          localStorage.setItem(`aura-last-sync-folders-${userEmail}`, "0");
+
+          const responseFolders = await apiFetch("/api/folders", {
             headers: { "X-User-Email": userEmail }
           });
           const dataFolders = await responseFolders.json();
@@ -2342,7 +2256,7 @@ export default function WorkspacePage({
         }}
       />
 
-      {/* 4. COMMAND PALETTE SPOTLIGHT MODAL */}
+      {/* Command palette */}
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
@@ -2369,6 +2283,7 @@ export default function WorkspacePage({
         activeWorkspaceId={activeWorkspaceId}
         workspaces={workspaces}
         onSelectWorkspace={handleSelectWorkspace}
+        indexes={indexes}
       />
     </div>
   );

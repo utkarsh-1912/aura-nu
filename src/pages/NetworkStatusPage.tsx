@@ -1,23 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Wifi,
-  WifiOff,
-  Database,
-  Server,
-  Activity,
-  Cpu,
-  Layers,
-  Settings,
-  RefreshCw,
-  Trash2,
-  Download,
-  AlertTriangle,
-  CheckCircle2,
-  ArrowLeft,
-  Clock,
-  HardDrive
-} from "lucide-react";
+import { WifiOff, Database, Activity, RefreshCw, Trash2, Download, ArrowLeft } from "lucide-react";
+import { Badge, Button, Dialog, IconButton, Logo, Skeleton, Spinner } from "../ui";
+import type { BadgeTone } from "../ui";
 
 interface DiagnosticLog {
   timestamp: string;
@@ -25,7 +10,7 @@ interface DiagnosticLog {
   message: string;
 }
 
-export default function NetworkStatusPage({ theme }: { theme: "light" | "dark" | "system" }) {
+export default function NetworkStatusPage(_props: { theme: "light" | "dark" | "system" }) {
   const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [latency, setLatency] = useState<number | null>(null);
@@ -34,6 +19,7 @@ export default function NetworkStatusPage({ theme }: { theme: "light" | "dark" |
   const [isLoading, setIsLoading] = useState(true);
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [dbRetryLoading, setDbRetryLoading] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
 
   // Client cache metrics
   const [localStorageUsage, setLocalStorageUsage] = useState({ used: 0, percentage: 0 });
@@ -117,21 +103,18 @@ export default function NetworkStatusPage({ theme }: { theme: "light" | "dark" |
     };
   }, []);
 
-  const handleClearLocalCache = () => {
-    if (confirm("Are you sure you want to purge local cache? This will clear temporary cached notes, offline logs, and layout states.")) {
-      // Clear notes backups
-      const keysToClear = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith("aura-notes-backup") || key.startsWith("aura-folders-backup") || key.startsWith("aura-last-sync"))) {
-          keysToClear.push(key);
-        }
+  const performPurge = () => {
+    // Clear notes backups
+    const keysToClear = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith("aura-notes-backup") || key.startsWith("aura-folders-backup") || key.startsWith("aura-last-sync"))) {
+        keysToClear.push(key);
       }
-      keysToClear.forEach((key) => localStorage.removeItem(key));
-      addLog("Local notes & folders cache manually purged by administrator.", "warning");
-      calculateLocalStorageMetrics();
-      alert("Local notes/folders offline cache has been cleared.");
     }
+    keysToClear.forEach((key) => localStorage.removeItem(key));
+    addLog("Local notes & folders cache manually purged by administrator.", "warning");
+    calculateLocalStorageMetrics();
   };
 
   const handleDownloadDiagnostics = () => {
@@ -172,330 +155,240 @@ export default function NetworkStatusPage({ theme }: { theme: "light" | "dark" |
     }
   };
 
-  // UI Theme Styling Variables
-  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const logTone: Record<DiagnosticLog["type"], BadgeTone> = {
+    success: "success",
+    warning: "warning",
+    error: "danger",
+    info: "neutral",
+  };
+
+  const components: { name: string; detail: string; tone: BadgeTone; label: string; metric?: string }[] = [
+    {
+      name: "Network",
+      detail: isOnline ? "Browser reports a connection." : "Browser is offline. Changes are saved locally.",
+      tone: isOnline ? "success" : "danger",
+      label: isOnline ? "Connected" : "Offline",
+    },
+    {
+      name: "API server",
+      detail: latency !== null ? "Responding to health checks." : isLoading ? "Checking..." : "Health check failed.",
+      tone: latency !== null ? "success" : isLoading ? "neutral" : "danger",
+      label: latency !== null ? "Operational" : isLoading ? "Checking" : "Unreachable",
+      metric: latency !== null ? `${latency} ms` : undefined,
+    },
+    {
+      name: "Database",
+      detail: serverHealth
+        ? serverHealth.database === "mongodb"
+          ? "MongoDB cluster is active."
+          : "Running on the JSON file fallback."
+        : "Database server unreachable.",
+      tone: serverHealth ? (serverHealth.database === "mongodb" ? "success" : "warning") : "danger",
+      label: serverHealth ? (serverHealth.database === "mongodb" ? "Operational" : "Fallback") : "Unreachable",
+    },
+    {
+      name: "AI assistant",
+      detail: serverHealth
+        ? serverHealth.geminiStatus
+          ? "Gemini 3.5 Flash is configured."
+          : "No provider key set. Using local fallback."
+        : "AI node offline.",
+      tone: serverHealth ? (serverHealth.geminiStatus ? "success" : "warning") : "neutral",
+      label: serverHealth ? (serverHealth.geminiStatus ? "Operational" : "Not set") : "Unknown",
+    },
+    {
+      name: "Offline cache",
+      detail: `${localStorageUsage.used} KB used, ${localStorageUsage.percentage}% of the 5.0 MB allocation.`,
+      tone: localStorageUsage.percentage > 80 ? "warning" : "success",
+      label: localStorageUsage.percentage > 80 ? "Nearly full" : "Healthy",
+    },
+  ];
+
+  const overall: { tone: BadgeTone; text: string } = !isOnline
+    ? { tone: "danger", text: "You are offline" }
+    : components.some((c) => c.tone === "danger")
+      ? { tone: "danger", text: "Some systems are unreachable" }
+      : components.some((c) => c.tone === "warning")
+        ? { tone: "warning", text: "Running with degraded features" }
+        : { tone: "success", text: "All systems operational" };
+
+  const refreshAll = () => {
+    checkLatencyAndHealth();
+    calculateLocalStorageMetrics();
+  };
 
   return (
-    <div className={`min-h-screen font-sans transition-colors ${
-      isDark ? "bg-[#09090B] text-zinc-100" : "bg-[#F8FAFC] text-slate-800"
-    }`}>
-      {/* Top Header Navigation */}
-      <header className={`border-b px-6 py-4 flex items-center justify-between backdrop-blur-md sticky top-0 z-30 ${
-        isDark ? "bg-[#09090B]/85 border-zinc-800/80" : "bg-[#F8FAFC]/85 border-slate-200"
-      }`}>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            className={`p-2 rounded-xl border transition-all cursor-pointer ${
-              isDark
-                ? "border-zinc-800 bg-zinc-900/40 text-zinc-300 hover:bg-zinc-850 hover:text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            }`}
-            title="Go Back"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div>
-            <h1 className="text-lg font-bold font-display tracking-tight flex items-center gap-2">
-              <Activity className="text-blue-500 animate-pulse" size={18} />
-              Aura Status Hub
-            </h1>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-500">Enterprise Network & Data Diagnostic System</p>
+    <div className="min-h-screen bg-surface text-fg">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex items-center gap-2">
+            <IconButton label="Go back" variant="ghost" onClick={() => navigate(-1)} className="max-sm:h-10 max-sm:w-10">
+              <ArrowLeft size={16} />
+            </IconButton>
+            <Logo size={22} />
+            <span className="text-[13px] text-fg-muted">/ Status</span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-            isOnline
-              ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-              : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
-          }`}>
-            {isOnline ? <Wifi size={11} className="animate-pulse" /> : <WifiOff size={11} />}
-            {isOnline ? "Network Connected" : "Local Offline Mode"}
-          </div>
-          <button
-            onClick={() => {
-              checkLatencyAndHealth();
-              calculateLocalStorageMetrics();
-            }}
-            disabled={isLoading}
-            className={`p-2 rounded-xl border transition-all cursor-pointer ${
-              isDark
-                ? "border-zinc-800 bg-zinc-900/40 text-zinc-300 hover:bg-zinc-850 hover:text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            } disabled:opacity-50`}
+          <Button
+            variant="secondary"
+            onClick={refreshAll}
+            loading={isLoading}
+            leadingIcon={<RefreshCw size={13} />}
+            className="max-sm:h-10"
           >
-            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-          </button>
+            Retry
+          </Button>
         </div>
       </header>
 
-      {/* Grid Dashboard Container */}
-      <main className="max-w-7xl mx-auto p-6 flex flex-col gap-6">
-        
-        {/* Row 1: Key Performance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* Card 1: API Status & Latency */}
-          <div className={`p-5 rounded-3xl border flex flex-col gap-3 shadow-sm ${
-            isDark ? "bg-[#121214] border-zinc-800/80" : "bg-white border-slate-200"
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-zinc-500">API Connection</span>
-              <Activity className="text-blue-500" size={16} />
-            </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-2xl font-bold font-display">
-                {latency !== null ? `${latency}` : "--"}
-              </span>
-              <span className="text-xs text-slate-400 dark:text-zinc-500 font-medium">ms</span>
-            </div>
-            <div className="mt-auto">
-              <div className="flex gap-1 items-end h-6 mt-1 w-full bg-slate-500/5 dark:bg-zinc-800/10 rounded-lg p-1.5 overflow-hidden">
-                {latencyHistory.map((val, idx) => (
-                  <div
-                    key={idx}
-                    className="flex-grow bg-blue-500 rounded-sm"
-                    style={{
-                      height: `${Math.min(100, (val / 300) * 100)}%`,
-                      opacity: idx === latencyHistory.length - 1 ? 1 : 0.4
-                    }}
-                    title={`Latency: ${val}ms`}
-                  />
+      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3" role="status" aria-live="polite">
+          <div>
+            <h1 className="text-[20px] font-semibold tracking-tight">System status</h1>
+            <p className="mt-1 text-[13px] text-fg-muted">Checks refresh every 10 seconds.</p>
+          </div>
+          <Badge tone={overall.tone}>{overall.text}</Badge>
+        </div>
+
+        {!isOnline && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">
+            <span className="flex items-center gap-2">
+              <WifiOff size={15} /> The server could not be reached. Your notes are safe on this device and will sync when the connection returns.
+            </span>
+            <Button variant="secondary" size="sm" onClick={refreshAll} loading={isLoading}>
+              Retry now
+            </Button>
+          </div>
+        )}
+
+        <section aria-labelledby="components-h">
+          <h2 id="components-h" className="mb-3 text-[14px] font-semibold">Components</h2>
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel">
+            {components.map((c) => (
+              <li key={c.name} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium">{c.name}</div>
+                  <div className="text-[12px] text-fg-muted">{c.detail}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {c.metric && <span className="font-mono text-[12px] text-fg-muted">{c.metric}</span>}
+                  {isLoading && c.name === "API server" ? <Spinner size={14} /> : null}
+                  <Badge tone={c.tone}>{c.label}</Badge>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="latency-h">
+          <h2 id="latency-h" className="mb-3 text-[14px] font-semibold">API latency</h2>
+          <div className="rounded-lg border border-line bg-panel p-4">
+            {latencyHistory.length === 0 ? (
+              isLoading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : (
+                <p className="text-[13px] text-fg-muted">No successful checks yet.</p>
+              )
+            ) : (
+              <>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[26px] font-semibold tracking-tight">{latency !== null ? latency : "--"}</span>
+                  <span className="text-[12px] text-fg-muted">ms latest</span>
+                </div>
+                <div
+                  role="img"
+                  aria-label={`Latency over the last ${latencyHistory.length} checks, in milliseconds: ${latencyHistory.join(", ")}`}
+                  className="mt-3 flex h-16 items-end gap-1"
+                >
+                  {latencyHistory.map((val, idx) => (
+                    <div
+                      key={idx}
+                      className="flex-1 rounded-sm bg-accent"
+                      style={{
+                        height: `${Math.max(4, Math.min(100, (val / 300) * 100))}%`,
+                        opacity: idx === latencyHistory.length - 1 ? 1 : 0.4,
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+
+        {serverHealth && (
+          <section aria-labelledby="server-h">
+            <h2 id="server-h" className="mb-3 text-[14px] font-semibold">Server</h2>
+            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+              {[
+                ["Environment", serverHealth.nodeEnv],
+                ["Port", "3000"],
+                ["Uptime", `${Math.floor(serverHealth.uptime)}s`],
+                ["Heap", `${Math.round(serverHealth.memoryUsage?.heapUsed / 1024 / 1024)} MB`],
+              ].map(([k, v]) => (
+                <div key={k} className="bg-panel px-4 py-3">
+                  <dt className="text-[12px] text-fg-muted">{k}</dt>
+                  <dd className="mt-0.5 font-mono text-[13px] font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
+
+        <section aria-labelledby="actions-h">
+          <h2 id="actions-h" className="mb-3 text-[14px] font-semibold">Actions</h2>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={checkLatencyAndHealth} loading={isLoading} leadingIcon={<Activity size={13} />} className="max-sm:h-10">
+              Ping server
+            </Button>
+            <Button variant="secondary" onClick={handleRetryDatabaseConnection} loading={dbRetryLoading} leadingIcon={<Database size={13} />} className="max-sm:h-10">
+              Retry database connection
+            </Button>
+            <Button variant="secondary" onClick={handleDownloadDiagnostics} leadingIcon={<Download size={13} />} className="max-sm:h-10">
+              Export diagnostics
+            </Button>
+            <Button variant="danger" onClick={() => setPurgeOpen(true)} leadingIcon={<Trash2 size={13} />} className="max-sm:h-10">
+              Purge local cache
+            </Button>
+          </div>
+        </section>
+
+        <section aria-labelledby="logs-h">
+          <h2 id="logs-h" className="mb-3 text-[14px] font-semibold">Diagnostic log</h2>
+          <div className="max-h-[320px] overflow-y-auto rounded-lg border border-line bg-panel">
+            {logs.length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-8 text-[13px] text-fg-muted">
+                <Spinner size={14} /> Gathering diagnostics...
+              </div>
+            ) : (
+              <ul className="divide-y divide-line font-mono text-[12px]">
+                {logs.map((log, index) => (
+                  <li key={index} className="flex items-start gap-2 px-4 py-2">
+                    <span className="shrink-0 text-fg-subtle">{log.timestamp}</span>
+                    <Badge tone={logTone[log.type]} className="shrink-0">{log.type}</Badge>
+                    <span className="break-words text-fg-muted">{log.message}</span>
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ul>
+            )}
           </div>
-
-          {/* Card 2: Database Node Status */}
-          <div className={`p-5 rounded-3xl border flex flex-col gap-3 shadow-sm ${
-            isDark ? "bg-[#121214] border-zinc-800/80" : "bg-white border-slate-200"
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-zinc-500">Database Engine</span>
-              <Database className="text-purple-500" size={16} />
-            </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-lg font-bold font-display uppercase truncate">
-                {serverHealth ? (serverHealth.database === "mongodb" ? "MongoDB Atlas" : "JSON Local File") : "Node Offline"}
-              </span>
-            </div>
-            <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-              {serverHealth ? (
-                serverHealth.database === "mongodb" ? (
-                  <span className="text-emerald-500 font-semibold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                    Active Node Clusters
-                  </span>
-                ) : (
-                  <span className="text-amber-500 font-semibold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    JSON File Fallback
-                  </span>
-                )
-              ) : "Database server unreachable"}
-            </span>
-          </div>
-
-          {/* Card 3: Storage Cache usage */}
-          <div className={`p-5 rounded-3xl border flex flex-col gap-3 shadow-sm ${
-            isDark ? "bg-[#121214] border-zinc-800/80" : "bg-white border-slate-200"
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-zinc-500">Offline Cache</span>
-              <HardDrive className="text-indigo-500" size={16} />
-            </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-2xl font-bold font-display">{localStorageUsage.used}</span>
-              <span className="text-xs text-slate-400 dark:text-zinc-500 font-medium">KB</span>
-            </div>
-            <div className="w-full bg-slate-100 dark:bg-zinc-800 h-1.5 rounded-full mt-auto overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  localStorageUsage.percentage > 80 ? "bg-rose-500" : "bg-indigo-500"
-                }`}
-                style={{ width: `${localStorageUsage.percentage}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[8px] text-slate-400 dark:text-zinc-500 font-mono mt-0.5">
-              <span>{localStorageUsage.percentage}% of allocation</span>
-              <span>5.0 MB Limit</span>
-            </div>
-          </div>
-
-          {/* Card 4: AI Gemini Status */}
-          <div className={`p-5 rounded-3xl border flex flex-col gap-3 shadow-sm ${
-            isDark ? "bg-[#121214] border-zinc-800/80" : "bg-white border-slate-200"
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-zinc-500">Gemini LLM Sync</span>
-              <Layers className="text-amber-500" size={16} />
-            </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-lg font-bold font-display uppercase">
-                {serverHealth ? (serverHealth.geminiStatus ? "Operational" : "Not Set") : "--"}
-              </span>
-            </div>
-            <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-              {serverHealth ? (
-                serverHealth.geminiStatus ? (
-                  <span className="text-emerald-500 font-semibold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                    Gemini 3.5 Flash Active
-                  </span>
-                ) : (
-                  <span className="text-rose-500 font-semibold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                    Using Local Offline Fallback
-                  </span>
-                )
-              ) : "Aura AI node offline"}
-            </span>
-          </div>
-
-        </div>
-
-        {/* Row 2: Diagnostics & Server Details */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Section: Diagnostic Actions (left) */}
-          <div className="lg:col-span-1 flex flex-col gap-4">
-            <h2 className="text-xs uppercase font-bold tracking-wider text-slate-400 dark:text-zinc-500 px-1">Network Operator Console</h2>
-            
-            <div className={`p-5 rounded-3xl border flex flex-col gap-4 shadow-sm ${
-              isDark ? "bg-[#121214] border-zinc-800/80" : "bg-white border-slate-200"
-            }`}>
-              
-              <div className="flex flex-col gap-1.5">
-                <h4 className="text-xs font-bold">Manual Sync Trigger</h4>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">Fetch the latest payload indices from the server database clusters to refresh active client caches.</p>
-                <button
-                  onClick={checkLatencyAndHealth}
-                  disabled={isLoading}
-                  className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
-                  Ping Server Node
-                </button>
-              </div>
-
-              <hr className={isDark ? "border-zinc-800" : "border-slate-100"} />
-
-              <div className="flex flex-col gap-1.5">
-                <h4 className="text-xs font-bold">Retry Database Reconnect</h4>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">Attempt to establish server-side MongoDB connection from Node server if the database cluster selects a secondary fallback.</p>
-                <button
-                  onClick={handleRetryDatabaseConnection}
-                  disabled={dbRetryLoading}
-                  className={`w-full py-2.5 border font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5 ${
-                    isDark
-                      ? "border-zinc-800 bg-zinc-900/40 text-zinc-200 hover:bg-zinc-850 hover:border-zinc-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:shadow-xs"
-                  } disabled:opacity-50`}
-                >
-                  <Database size={12} className={dbRetryLoading ? "animate-pulse text-blue-500" : ""} />
-                  {dbRetryLoading ? "Re-establishing clusters..." : "Force MongoDB Retry"}
-                </button>
-              </div>
-
-              <hr className={isDark ? "border-zinc-800" : "border-slate-100"} />
-
-              <div className="flex flex-col gap-1.5">
-                <h4 className="text-xs font-bold">Purge Cache & Diagnostic Logs</h4>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">Wipe layout configuration values, tag definitions, and cached documents stored locally in the browser.</p>
-                <div className="flex gap-2 w-full mt-1">
-                  <button
-                    onClick={handleClearLocalCache}
-                    className="flex-1 py-2.5 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <Trash2 size={12} />
-                    Purge Cache
-                  </button>
-                  <button
-                    onClick={handleDownloadDiagnostics}
-                    className={`flex-1 py-2.5 border font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      isDark
-                        ? "border-zinc-800 bg-zinc-900/40 text-zinc-200 hover:bg-zinc-850 hover:border-zinc-700"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Download size={12} />
-                    Export Diagnostics
-                  </button>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Section: Live logs and Server Environment details (right) */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
-            <h2 className="text-xs uppercase font-bold tracking-wider text-slate-400 dark:text-zinc-500 px-1 font-display">System Diagnostic Logs</h2>
-            
-            <div className={`p-5 rounded-3xl border flex flex-col gap-4 shadow-sm flex-grow min-h-[360px] ${
-              isDark ? "bg-[#121214] border-zinc-800/80" : "bg-white border-slate-200"
-            }`}>
-              
-              {/* Server metrics line */}
-              {serverHealth && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-500/5 dark:bg-zinc-800/10 p-3 rounded-2xl text-[10px] font-mono">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-slate-400 dark:text-zinc-500">ENV MODE</span>
-                    <span className="font-bold text-slate-800 dark:text-zinc-200">{serverHealth.nodeEnv}</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-slate-400 dark:text-zinc-500">PORT</span>
-                    <span className="font-bold text-slate-800 dark:text-zinc-200">3000</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-slate-400 dark:text-zinc-500">UPTIME</span>
-                    <span className="font-bold text-slate-800 dark:text-zinc-200">{Math.floor(serverHealth.uptime)}s</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-slate-400 dark:text-zinc-500">HEAP SIZE</span>
-                    <span className="font-bold text-slate-800 dark:text-zinc-200">
-                      {Math.round(serverHealth.memoryUsage?.heapUsed / 1024 / 1024)} MB
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Logs area */}
-              <div className={`flex-grow overflow-y-auto rounded-2xl p-4 border max-h-[320px] font-mono text-[10px] flex flex-col gap-2 ${
-                isDark ? "bg-zinc-950 border-zinc-800/60 text-zinc-400" : "bg-slate-50/50 border-slate-200 text-slate-600"
-              }`}>
-                {logs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400 py-8 gap-1.5">
-                    <Clock size={16} className="animate-spin text-slate-300" />
-                    <span>Diagnostics initializing, gathering log payloads...</span>
-                  </div>
-                ) : (
-                  logs.map((log, index) => (
-                    <div key={index} className="flex gap-2 items-start leading-relaxed border-b border-dashed border-slate-100 dark:border-zinc-900 pb-1.5 last:border-b-0">
-                      <span className="text-slate-400 dark:text-zinc-600 flex-shrink-0">[{log.timestamp}]</span>
-                      <span className={`font-semibold uppercase text-[9px] px-1 py-0.2 rounded-sm flex-shrink-0 ${
-                        log.type === "success"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : log.type === "warning"
-                          ? "bg-amber-500/10 text-amber-500"
-                          : log.type === "error"
-                          ? "bg-rose-500/10 text-rose-500"
-                          : "bg-blue-500/10 text-blue-500"
-                      }`}>
-                        {log.type}
-                      </span>
-                      <span className="break-all">{log.message}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-            </div>
-          </div>
-
-        </div>
-
+        </section>
       </main>
+
+      <Dialog
+        open={purgeOpen}
+        onClose={() => setPurgeOpen(false)}
+        title="Purge local cache?"
+        description="This removes cached notes, folder backups and last-sync markers stored in this browser. Anything not yet synced to the server will be lost."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPurgeOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={() => { setPurgeOpen(false); performPurge(); }}>Purge cache</Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-fg-muted">This cannot be undone.</p>
+      </Dialog>
     </div>
   );
 }

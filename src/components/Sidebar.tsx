@@ -34,10 +34,20 @@ import {
   FolderPlus,
   ArrowUpRight,
   Database,
-  LogOut
+  LogOut,
+  Bot,
+  Building2,
+  Shield,
+  ChevronsUpDown,
+  Workflow
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Avatar, Button, Dialog, IconButton, Kbd, Logo, LogoMark, Menu } from "../ui";
+import type { MenuEntry } from "../ui";
 import { Note, Folder, Workspace, WorkspaceType } from "../types";
+
+import SmartFoldersSection from "../features/smartFolders/SmartFoldersSection";
+import type { SmartFolder } from "../features/smartFolders/store";
 
 interface SidebarProps {
   notes: Note[];
@@ -76,6 +86,10 @@ interface SidebarProps {
   onSignOut?: () => void;
   onMobileClose?: () => void;
   isOnline?: boolean;
+  /** Smart folders (features/smartFolders); the section is hidden when not provided. */
+  smartFolders?: SmartFolder[];
+  onSaveSmartFolder?: (sf: SmartFolder) => void;
+  onDeleteSmartFolder?: (id: string) => void;
 }
 
 const AVAILABLE_COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#64748b"];
@@ -117,7 +131,14 @@ export default function Sidebar({
   onDeleteNote,
   onSignOut,
   isOnline,
+  smartFolders,
+  onSaveSmartFolder,
+  onDeleteSmartFolder,
 }: SidebarProps) {
+  const navigate = useNavigate();
+  const [foldersOpen, setFoldersOpen] = useState(true);
+  const [tagsOpen, setTagsOpen] = useState(true);
+  const [linksOpen, setLinksOpen] = useState(true);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [showUserProfileMenu, setShowUserProfileMenu] = useState(false);
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
@@ -539,21 +560,52 @@ export default function Sidebar({
   const renderFolderTree = (parentId: string | undefined, depth: number = 0): React.ReactNode => {
     const currentLevel = folders.filter((f) => f.parentId === parentId);
 
+    const swatches = (current: string, set: (c: string) => void) => (
+      <div className="flex gap-1.5 py-1" role="group" aria-label="Folder color">
+        {AVAILABLE_COLORS.map((col) => (
+          <button
+            key={col}
+            type="button"
+            aria-label={`Color ${col}`}
+            aria-pressed={current === col}
+            onClick={() => set(col)}
+            className="h-4 w-4 rounded-full outline-offset-2 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-accent"
+            style={{ backgroundColor: col, outline: current === col ? `2px solid ${col}` : undefined }}
+          />
+        ))}
+      </div>
+    );
+    const emojis = (current: string, set: (e: string) => void) => (
+      <div className="flex gap-0.5 overflow-x-auto py-0.5" role="group" aria-label="Folder icon">
+        {AVAILABLE_EMOJIS.map((em) => (
+          <button
+            key={em}
+            type="button"
+            aria-label={`Icon ${em}`}
+            aria-pressed={current === em}
+            onClick={() => set(em)}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[13px] hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent ${
+              current === em ? "bg-accent-soft" : ""
+            }`}
+          >
+            {em}
+          </button>
+        ))}
+      </div>
+    );
+
     return (
-      <div className="flex flex-col gap-0.5 w-full">
+      <div className="flex w-full flex-col gap-px">
         {currentLevel.map((folder) => {
           const isSelected = activeFolder === folder.id && activeTag === null;
           const folderCount = notes.filter((n) => n.folder === folder.id && !n.isTrashed && !n.isArchived).length;
           const isExpanded = folder.isExpanded ?? false;
-          
-          // Check if this folder has subfolders
           const hasChildren = folders.some((f) => f.parentId === folder.id);
           const isEditing = editingFolderId === folder.id;
           const isTargetedDrag = dragOverFolderId === folder.id;
 
           return (
-            <div key={folder.id} className="w-full flex flex-col">
-              {/* Folder Node row */}
+            <div key={folder.id} className="flex w-full flex-col">
               <div
                 onContextMenu={(e) => handleFolderContextMenu(e, folder.id)}
                 onTouchStart={(e) => handleTouchStart(e, folder.id)}
@@ -567,327 +619,327 @@ export default function Sidebar({
                   e.stopPropagation();
                   handleTriggerRename(folder);
                 }}
-                onClick={() => handleSelectFolder(folder.id)}
-                className={`flex items-center justify-between text-xs py-1 px-2 rounded-md transition-all group cursor-pointer relative ${
+                className={`group relative flex min-h-10 items-center justify-between rounded-md pr-1 text-[13px] transition-colors md:min-h-8 ${
                   isSelected
-                    ? theme === "dark"
-                      ? "bg-zinc-900/95 text-indigo-400 font-semibold border-l-2"
-                      : "bg-white text-blue-600 font-semibold shadow-xs border-l-2 border-blue-500"
+                    ? "bg-active font-medium text-fg"
                     : isTargetedDrag
-                    ? "bg-blue-500/10 border border-dashed border-blue-500"
-                    : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100/40 dark:hover:bg-zinc-900/30"
+                    ? "bg-accent-soft outline-1 outline-dashed outline-accent"
+                    : "text-fg-muted hover:bg-hover hover:text-fg"
                 }`}
-                style={{
-                  borderLeftColor: isSelected ? folder.color || "#3b82f6" : "transparent",
-                  paddingLeft: `${depth * 12 + 8}px`
-                }}
+                style={{ paddingLeft: `${depth * 12 + 2}px` }}
               >
-                <div className="flex items-center gap-1.5 min-w-0 flex-grow">
-                  {/* Expansion chevron toggle */}
+                {hasChildren ? (
                   <button
+                    type="button"
+                    aria-label={isExpanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`}
+                    aria-expanded={isExpanded}
                     onClick={(e) => {
                       e.stopPropagation();
                       onUpdateFolderExpanded(folder.id, !isExpanded);
                     }}
-                    className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors ${
-                      hasChildren ? "opacity-100" : "opacity-0 pointer-events-none"
-                    }`}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   </button>
+                ) : (
+                  <span className="h-6 w-6 shrink-0" aria-hidden />
+                )}
 
-                  {/* Inline Edit form OR static icon + label */}
-                  {isEditing ? (
-                    <div className="flex flex-col gap-1.5 p-1 bg-slate-50 dark:bg-zinc-900 rounded-lg w-full z-20 shadow-sm border border-slate-200/50 dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">{editingFolderIcon}</span>
-                        <input
-                          type="text"
-                          value={editingFolderName}
-                          onChange={(e) => setEditingFolderName(e.target.value)}
-                          onKeyDown={(e) => handleRenameKeyDown(e, folder.id)}
-                          autoFocus
-                          className="text-xs px-1.5 py-1 rounded outline-none border w-full bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 border-slate-200 dark:border-zinc-800"
-                        />
-                        <button
-                          onClick={() => handleSaveRename(folder.id)}
-                          className="p-1 rounded bg-emerald-500 text-white hover:bg-emerald-600"
-                        >
-                          <Check size={11} />
-                        </button>
-                        <button
-                          onClick={() => setEditingFolderId(null)}
-                          className="p-1 rounded bg-slate-200 text-slate-700 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-slate-300"
-                        >
-                          <X size={11} />
-                        </button>
-                      </div>
-
-                      {/* inline customization options */}
-                      <div className="flex flex-col gap-1">
-                        {/* Emojis selection */}
-                        <div className="flex gap-1 overflow-x-auto py-0.5">
-                          {AVAILABLE_EMOJIS.map((em) => (
-                            <button
-                              key={em}
-                              onClick={() => setEditingFolderIcon(em)}
-                              className={`text-xs p-1 rounded hover:scale-115 transition-transform ${
-                                editingFolderIcon === em ? "bg-blue-500/10 ring-1 ring-blue-500" : ""
-                              }`}
-                            >
-                              {em}
-                            </button>
-                          ))}
-                        </div>
-                        {/* Colors selection */}
-                        <div className="flex gap-1.5 py-0.5">
-                          {AVAILABLE_COLORS.map((col) => (
-                            <button
-                              key={col}
-                              onClick={() => setEditingFolderColor(col)}
-                              className={`w-3.5 h-3.5 rounded-full hover:scale-115 transition-transform`}
-                              style={{
-                                backgroundColor: col,
-                                boxShadow: editingFolderColor === col ? "0 0 0 2px #fff, 0 0 0 3px " + col : "none"
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
+                {isEditing ? (
+                  <div className="z-20 flex min-w-0 flex-1 flex-col gap-1 rounded-md border border-line bg-raised p-1.5 shadow-soft" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[13px]" aria-hidden>{editingFolderIcon}</span>
+                      <input
+                        type="text"
+                        aria-label="Folder name"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        onKeyDown={(e) => handleRenameKeyDown(e, folder.id)}
+                        autoFocus
+                        className="h-7 w-full min-w-0 rounded border border-line bg-panel px-1.5 text-[13px] text-fg outline-none focus:border-accent"
+                      />
+                      <IconButton label="Save folder" size="sm" variant="primary" onClick={() => handleSaveRename(folder.id)}>
+                        <Check size={12} />
+                      </IconButton>
+                      <IconButton label="Cancel rename" size="sm" onClick={() => setEditingFolderId(null)}>
+                        <X size={12} />
+                      </IconButton>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="text-xs">{folder.icon || "📁"}</span>
-                      <span className="truncate">{folder.name}</span>
-                    </div>
-                  )}
-                </div>
+                    {emojis(editingFolderIcon, setEditingFolderIcon)}
+                    {swatches(editingFolderColor, setEditingFolderColor)}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectFolder(folder.id)}
+                    aria-current={isSelected ? "page" : undefined}
+                    className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-accent md:min-h-8"
+                  >
+                    <span className="text-[13px]" aria-hidden>{folder.icon || "📁"}</span>
+                    <span className="truncate">{folder.name}</span>
+                  </button>
+                )}
 
                 {!isEditing && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] opacity-50 font-mono scale-90">{folderCount}</span>
-                    {/* More button showing context menu */}
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <span className="px-1 text-[11px] tabular-nums text-fg-subtle group-hover:hidden">{folderCount > 0 ? folderCount : ""}</span>
                     <button
+                      type="button"
+                      aria-label={`Folder actions for ${folder.name}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleFolderContextMenu(e, folder.id);
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-400"
+                      className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-active hover:text-fg focus-visible:outline-2 focus-visible:outline-accent md:hidden md:group-hover:flex"
                     >
-                      <MoreVertical size={11} />
+                      <MoreVertical size={13} />
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* Recursive child folders container */}
-              {isExpanded && hasChildren && (
-                <div className="w-full">
-                  {renderFolderTree(folder.id, depth + 1)}
-                </div>
-              )}
+              {isExpanded && hasChildren && <div className="w-full">{renderFolderTree(folder.id, depth + 1)}</div>}
             </div>
           );
         })}
 
-        {/* Inline Folder Creation Form */}
         {creatingInParentId === (parentId || "root") && (
           <div
-            style={{ paddingLeft: `${(parentId ? depth + 1 : depth) * 12 + 8}px` }}
-            className="flex flex-col gap-1.5 p-2 mx-1 rounded-xl bg-slate-50 dark:bg-zinc-900 shadow-sm border border-slate-200/50 dark:border-zinc-800"
+            style={{ marginLeft: `${(parentId ? depth + 1 : depth) * 12 + 2}px` }}
+            className="my-1 flex flex-col gap-1 rounded-md border border-line bg-raised p-2 shadow-soft"
           >
             <div className="flex items-center gap-1.5">
-              <span className="text-xs">{newFolderIcon}</span>
+              <span className="text-[13px]" aria-hidden>{newFolderIcon}</span>
               <input
                 type="text"
+                aria-label="New folder name"
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 onKeyDown={(e) => handleNewFolderKeyDown(e, parentId)}
-                placeholder="Folder name..."
+                placeholder="Folder name"
                 autoFocus
-                className="text-xs px-2 py-1.5 rounded outline-none border w-full bg-white dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 border-slate-200 dark:border-zinc-800"
+                className="h-7 w-full min-w-0 rounded border border-line bg-panel px-1.5 text-[13px] text-fg outline-none placeholder:text-fg-subtle focus:border-accent"
               />
-              <button
-                onClick={() => handleSaveNewFolder(parentId)}
-                className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600"
-              >
-                <Check size={11} />
-              </button>
-              <button
-                onClick={() => setCreatingInParentId(null)}
-                className="p-1 rounded bg-slate-200 text-slate-700 dark:bg-zinc-800 dark:text-zinc-400"
-              >
-                <X size={11} />
-              </button>
+              <IconButton label="Create folder" size="sm" variant="primary" onClick={() => handleSaveNewFolder(parentId)}>
+                <Check size={12} />
+              </IconButton>
+              <IconButton label="Cancel new folder" size="sm" onClick={() => setCreatingInParentId(null)}>
+                <X size={12} />
+              </IconButton>
             </div>
-
-            <div className="flex flex-col gap-1">
-              <div className="flex gap-1 overflow-x-auto py-0.5">
-                {AVAILABLE_EMOJIS.map((em) => (
-                  <button
-                    key={em}
-                    onClick={() => setNewFolderIcon(em)}
-                    className={`text-xs p-1 rounded hover:scale-115 transition-transform ${
-                      newFolderIcon === em ? "bg-blue-500/10 ring-1 ring-blue-500" : ""
-                    }`}
-                  >
-                    {em}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1.5 py-0.5">
-                {AVAILABLE_COLORS.map((col) => (
-                  <button
-                    key={col}
-                    onClick={() => setNewFolderColor(col)}
-                    className="w-3.5 h-3.5 rounded-full hover:scale-115 transition-transform"
-                    style={{
-                      backgroundColor: col,
-                      boxShadow: newFolderColor === col ? "0 0 0 2px #fff, 0 0 0 3px " + col : "none"
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
+            {emojis(newFolderIcon, setNewFolderIcon)}
+            {swatches(newFolderColor, setNewFolderColor)}
           </div>
         )}
       </div>
     );
   };
 
+  const collapsed = isSidebarCollapsed;
+  const userName = currentUserEmail ? currentUserEmail.split("@")[0] : "Enterprise Guest";
+  const quotaMb = activeWorkspace?.storageQuota
+    ? activeWorkspace.storageQuota > 10000
+      ? Math.round(activeWorkspace.storageQuota / (1024 * 1024))
+      : activeWorkspace.storageQuota
+    : 5;
+
+  const sectionHeader = (label: string, open: boolean, toggle: () => void, action?: React.ReactNode) => (
+    <div className="flex items-center justify-between px-2 pb-1 pt-3">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex items-center gap-1 rounded text-[11px] font-medium text-fg-subtle outline-none hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        <ChevronRight size={11} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+        {label}
+      </button>
+      {action}
+    </div>
+  );
+
+  const rowBase =
+    "group flex min-h-10 w-full items-center rounded-md px-2 text-[13px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent md:min-h-8";
+
+  const profileItems: MenuEntry[] = [
+    { id: "settings", label: "Account settings", icon: <Settings size={14} />, onSelect: () => onOpenSettings() },
+    { id: "agents", label: "Agent Studio", icon: <Bot size={14} />, onSelect: () => navigate("/org/org-aura-main/agents") },
+    { id: "workflows", label: "Workflow Studio", icon: <Workflow size={14} />, onSelect: () => navigate("/org/org-aura-main/workflows") },
+    { id: "org", label: "Organization Hub", icon: <Building2 size={14} />, onSelect: () => navigate("/org/org-aura-main") },
+    { id: "admin", label: "Admin console", icon: <Shield size={14} />, onSelect: () => navigate("/org/org-aura-main/admin") },
+    { id: "network", label: "System diagnostics", icon: <Activity size={14} />, onSelect: () => navigate("/network-status") },
+    ...(onSignOut
+      ? ([
+          "separator",
+          { id: "signout", label: "Sign out", icon: <LogOut size={14} />, danger: true, onSelect: () => onSignOut() },
+        ] as MenuEntry[])
+      : []),
+  ];
+
+  const ctxFolder = contextMenuFolderId ? folders.find((f) => f.id === contextMenuFolderId) : null;
+  const ctxItem =
+    "flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg outline-none hover:bg-hover focus-visible:bg-hover";
+  const deleteFolder = deleteConfirmFolderId ? folders.find((f) => f.id === deleteConfirmFolderId) : null;
+
+  const radio = (mode: "uncategorize" | "move" | "trash", title: string, hint: string, danger?: boolean) => (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+        deleteMode === mode ? (danger ? "border-danger bg-danger-soft" : "border-accent bg-accent-soft") : "border-line hover:bg-hover"
+      }`}
+    >
+      <input
+        type="radio"
+        name="deleteMode"
+        checked={deleteMode === mode}
+        onChange={() => setDeleteMode(mode)}
+        className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
+      />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={`text-[13px] font-medium ${danger ? "text-danger" : "text-fg"}`}>{title}</span>
+        <span className="text-[12px] text-fg-muted">{hint}</span>
+        {mode === "move" && deleteMode === "move" && (
+          <select
+            aria-label="Target folder"
+            value={deleteTargetFolderId}
+            onChange={(e) => setDeleteTargetFolderId(e.target.value)}
+            className="mt-2 h-8 w-full rounded-md border border-line bg-panel px-2 text-[13px] text-fg outline-none focus:border-accent"
+          >
+            {folders
+              .filter((f) => f.id !== deleteConfirmFolderId)
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.icon || "📁"} {f.name}
+                </option>
+              ))}
+          </select>
+        )}
+      </span>
+    </label>
+  );
+
   return (
     <motion.div
       id="sidebar-container"
-      animate={{ width: isSidebarCollapsed ? 72 : 280 }}
-      transition={{ duration: 0.2, ease: "easeInOut" }}
-      className="h-full border-r border-border-primary relative flex flex-col flex-shrink-0 transition-colors duration-200 select-none bg-bg-primary text-text-secondary"
+      animate={{ width: collapsed ? 56 : 240 }}
+      transition={{ duration: 0.16, ease: "easeOut" }}
+      className="relative flex h-full max-w-full shrink-0 select-none flex-col border-r border-line bg-sidebar pt-[env(safe-area-inset-top)] text-fg-muted"
     >
-      {/* Sidebar Collapse Toggle */}
-      <button
-        id="sidebar-collapse-btn"
-        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        className={`absolute -right-3 top-5 z-20 w-6 h-6 rounded-full border flex items-center justify-center transition-all ${
-          theme === "dark"
-            ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white"
-            : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
-        } shadow-sm cursor-pointer`}
-      >
-        {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-      </button>
-
-      {/* Hover Notch for collapsed sidebar */}
-      {isSidebarCollapsed && (
-        <div
-          onClick={() => setIsSidebarCollapsed(false)}
-          className="absolute -right-1.5 top-1/2 -translate-y-1/2 z-30 w-4 h-24 flex items-center justify-end cursor-pointer group"
-          title="Expand Sidebar"
-        >
-          <div className="w-1.5 h-14 rounded-l-lg bg-blue-500/80 group-hover:bg-blue-600 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm mr-0.5"></div>
+      {/* Brand + collapse */}
+      <div className={`flex h-12 shrink-0 items-center px-2.5 ${collapsed ? "justify-center" : "justify-between"}`}>
+        {collapsed ? <LogoMark size={22} /> : <Logo size={22} />}
+        {!collapsed && (
+          <IconButton id="sidebar-collapse-btn" label="Collapse sidebar" size="sm" onClick={() => setIsSidebarCollapsed(true)} className="hidden md:inline-flex">
+            <ChevronLeft size={15} />
+          </IconButton>
+        )}
+      </div>
+      {collapsed && (
+        <div className="flex justify-center pb-1">
+          <IconButton id="sidebar-collapse-btn" label="Expand sidebar" size="sm" onClick={() => setIsSidebarCollapsed(false)}>
+            <ChevronRight size={15} />
+          </IconButton>
         </div>
       )}
 
-      {/* Workspace Switcher */}
-      <div id="workspace-switcher-section" className="p-2 flex flex-col gap-2 border-b border-slate-100/40 dark:border-zinc-800/40">
+      {/* Workspace switcher */}
+      <div id="workspace-switcher-section" className="shrink-0 px-2 pb-2">
         <div ref={workspaceMenuRef} className="relative">
           <button
             id="workspace-dropdown-btn"
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={isWorkspaceOpen}
+            aria-label={`Workspace: ${activeWorkspace?.name ?? "none"}. Switch workspace`}
             onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
-            className={`w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${
-              theme === "dark" ? "hover:bg-zinc-950/80 bg-zinc-950/20" : "hover:bg-slate-100/80 bg-slate-100/30"
-            } ${isSidebarCollapsed ? "justify-center" : "justify-between"} border border-slate-200/40 dark:border-zinc-800/40 shadow-xs cursor-pointer`}
+            className={`flex min-h-10 w-full items-center gap-2 rounded-md border border-line bg-panel p-1.5 text-left outline-none transition-colors hover:border-line-strong hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent ${
+              collapsed ? "justify-center" : "justify-between"
+            }`}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className={`w-8.5 h-8.5 rounded-xl flex items-center justify-center font-display font-black text-white shadow-sm shrink-0 bg-gradient-to-tr ${
-                  activeWorkspace?.type === "Personal" ? "from-amber-400 to-orange-500" :
-                  activeWorkspace?.type === "Team" ? "from-emerald-400 to-teal-500" : "from-blue-500 to-indigo-600"
-                }`}
-              >
-                {activeWorkspace?.icon || activeWorkspace?.name[0]}
-              </div>
-              {!isSidebarCollapsed && (
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold truncate text-slate-800 dark:text-zinc-100">{activeWorkspace?.name}</span>
-                  <span className="text-[10px] opacity-60 font-medium truncate">{activeWorkspace?.type} Studio</span>
-                </div>
+            <span className="flex min-w-0 items-center gap-2">
+              <Avatar name={activeWorkspace?.name || "Workspace"} size={24} />
+              {!collapsed && (
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[13px] font-medium leading-tight text-fg">{activeWorkspace?.name}</span>
+                  <span className="truncate text-[11px] leading-tight text-fg-subtle">{activeWorkspace?.type}</span>
+                </span>
               )}
-            </div>
-            {!isSidebarCollapsed && <ChevronDown size={13} className="opacity-60" />}
+            </span>
+            {!collapsed && <ChevronsUpDown size={13} className="shrink-0 text-fg-subtle" aria-hidden />}
           </button>
 
           {isWorkspaceOpen && (
             <div
-              className={`absolute mt-1.5 rounded-2xl shadow-2xl border p-1.5 z-50 flex flex-col gap-0.5 ${
-                isSidebarCollapsed
-                  ? "left-full top-0 ml-2 w-60"
-                  : "top-full left-0 right-0"
-              } ${
-                theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
+              role="listbox"
+              aria-label="Workspaces"
+              className={`absolute z-50 mt-1 flex flex-col gap-0.5 rounded-lg border border-line bg-raised p-1 shadow-pop ${
+                collapsed ? "left-full top-0 ml-2 w-60" : "left-0 right-0 top-full"
               }`}
             >
-              <div className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase px-2 py-1.5 border-b border-slate-100 dark:border-zinc-800/60 mb-1">
-                Switch Studio
-              </div>
-              <div className="max-h-60 overflow-y-auto flex flex-col gap-0.5 no-scrollbar">
+              <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-fg-subtle">Switch workspace</div>
+              <div className="no-scrollbar flex max-h-60 flex-col gap-0.5 overflow-y-auto">
                 {workspaces.map((w) => {
                   const isActive = w.id === activeWorkspaceId;
                   return (
                     <div
                       key={w.id}
-                      className={`flex items-center justify-between p-2 rounded-xl text-xs transition-colors group/item ${
-                        isActive
-                          ? theme === "dark" ? "bg-zinc-900 text-white font-semibold" : "bg-slate-100 text-slate-900 font-semibold"
-                          : "hover:bg-slate-50 dark:hover:bg-zinc-900"
-                      }`}
+                      className={`group/item flex items-center justify-between rounded-md pr-1 ${isActive ? "bg-accent-soft" : "hover:bg-hover"}`}
                     >
                       <button
+                        type="button"
+                        role="option"
+                        aria-selected={isActive}
                         onClick={() => {
                           setActiveWorkspaceId(w.id);
                           setIsWorkspaceOpen(false);
                           if (onMobileClose) onMobileClose();
                         }}
-                        className="flex items-center gap-2 flex-grow min-w-0 text-left cursor-pointer bg-transparent border-none outline-none text-inherit font-inherit"
+                        className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg outline-none focus-visible:outline-2 focus-visible:outline-accent md:min-h-8"
                       >
-                        <span className="shrink-0">{w.icon || "🚀"}</span>
+                        <span className="shrink-0" aria-hidden>{w.icon || "🚀"}</span>
                         <span className="truncate">{w.name}</span>
+                        {isActive && <Check size={13} className="ml-auto shrink-0 text-accent" aria-hidden />}
                       </button>
-                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                        <button
+                      <div className="flex shrink-0 items-center opacity-100 focus-within:opacity-100 md:opacity-0 md:group-hover/item:opacity-100">
+                        <IconButton
+                          label={w.isPinned ? `Unpin ${w.name}` : `Pin ${w.name}`}
+                          size="sm"
                           onClick={() => onTogglePinWorkspace(w.id)}
-                          className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-400 ${w.isPinned ? "text-amber-500" : ""}`}
-                          title="Pin Workspace"
+                          className={w.isPinned ? "!text-accent" : ""}
                         >
-                          <Pin size={10} className={w.isPinned ? "fill-amber-500" : ""} />
-                        </button>
-                        <button
+                          <Pin size={12} className={w.isPinned ? "fill-accent" : ""} />
+                        </IconButton>
+                        <IconButton
+                          label={w.isFavorite ? `Unfavorite ${w.name}` : `Favorite ${w.name}`}
+                          size="sm"
                           onClick={() => onToggleFavoriteWorkspace(w.id)}
-                          className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-400 ${w.isFavorite ? "text-yellow-500" : ""}`}
-                          title="Favorite Workspace"
+                          className={w.isFavorite ? "!text-warning" : ""}
                         >
-                          <Star size={10} className={w.isFavorite ? "fill-yellow-500" : ""} />
-                        </button>
+                          <Star size={12} className={w.isFavorite ? "fill-warning" : ""} />
+                        </IconButton>
                         {workspaces.length > 1 && (
-                          <button
+                          <IconButton
+                            label={`Delete workspace ${w.name}`}
+                            size="sm"
+                            className="!text-danger"
                             onClick={() => {
                               if (confirm(`Are you sure you want to delete workspace "${w.name}"? All folders and notes inside it will be permanently deleted.`)) {
                                 if (onDeleteWorkspace) onDeleteWorkspace(w.id);
                               }
                             }}
-                            className="p-1 rounded hover:bg-red-500/10 text-red-500 hover:text-red-600 cursor-pointer"
-                            title="Delete Workspace"
                           >
-                            <Trash size={10} />
-                          </button>
+                            <Trash size={12} />
+                          </IconButton>
                         )}
                       </div>
                     </div>
                   );
                 })}
               </div>
-              
-              <div className="h-px bg-slate-100 dark:bg-zinc-800/80 my-1"></div>
-              
+
+              <div className="my-1 h-px bg-line" />
+
               <button
+                type="button"
                 onClick={() => {
                   const wsName = prompt("Enter new workspace name:");
                   if (wsName && wsName.trim()) {
@@ -895,123 +947,102 @@ export default function Sidebar({
                   }
                   setIsWorkspaceOpen(false);
                 }}
-                className="w-full flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-semibold text-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 cursor-pointer transition-colors"
+                className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-[13px] font-medium text-accent outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent md:min-h-8"
               >
-                <Plus size={13} />
-                <span>Create Workspace</span>
+                <Plus size={14} aria-hidden />
+                <span>Create workspace</span>
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Primary Actions */}
-      <div id="quick-actions-section" className="px-4 mb-2 flex flex-col gap-1.5 mt-4">
-        <button
-          id="new-note-sidebar-btn"
-          onClick={onNewNote}
-          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-xs transition-transform active:scale-[0.98] ${
-            theme === "dark"
-              ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500"
-              : "bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600"
-          } justify-center cursor-pointer`}
-        >
-          <Plus size={14} />
-          {!isSidebarCollapsed && <span>New Note</span>}
-        </button>
-
-        {!isSidebarCollapsed && (
+      {/* Primary actions */}
+      <div id="quick-actions-section" className="flex shrink-0 flex-col gap-1.5 px-2 pb-2">
+        {collapsed ? (
+          <IconButton id="new-note-sidebar-btn" label="New note" variant="primary" onClick={onNewNote} className="mx-auto">
+            <Plus size={15} />
+          </IconButton>
+        ) : (
+          <Button id="new-note-sidebar-btn" variant="primary" onClick={onNewNote} leadingIcon={<Plus size={14} />} className="w-full !justify-start">
+            New note
+          </Button>
+        )}
+        {collapsed ? (
+          <IconButton id="cmd-palette-sidebar-btn" label="Search and commands" onClick={onOpenCommandPalette} className="mx-auto">
+            <Search size={15} />
+          </IconButton>
+        ) : (
           <button
             id="cmd-palette-sidebar-btn"
+            type="button"
             onClick={onOpenCommandPalette}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-colors border ${
-              theme === "dark"
-                ? "bg-zinc-950/40 hover:bg-zinc-900 border-zinc-800/80 text-zinc-400"
-                : "bg-white hover:bg-slate-50 border-slate-200/80 text-slate-400"
-            }`}
+            className="flex h-8 w-full items-center justify-between rounded-md border border-line bg-panel px-2.5 text-[13px] text-fg-subtle outline-none transition-colors hover:border-line-strong hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <div className="flex items-center gap-2">
-              <Search size={13} />
-              <span>Search Actions...</span>
-            </div>
-            <span className="font-mono text-[9px] scale-90 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
-              ⌘K
+            <span className="flex items-center gap-2">
+              <Search size={13} aria-hidden />
+              Search
+            </span>
+            <span className="flex items-center gap-0.5">
+              <Kbd>Ctrl</Kbd>
+              <Kbd>K</Kbd>
             </span>
           </button>
         )}
       </div>
 
-      {/* Main Views */}
-      <div id="main-navigation-section" className="px-2 py-1 flex flex-col gap-0.5 overflow-y-auto flex-grow no-scrollbar">
-        {mainNavItems.map((item) => {
-          const isActive = activeFolder === item.id && activeTag === null;
-          const isTargetedDrag = dragOverNavId === item.id;
-          
-          return (
-            <button
-              id={`nav-item-${item.id.toLowerCase().replace(" ", "-")}`}
-              key={item.id}
-              onClick={() => handleSelectNav(item.id)}
-              onDragOver={(e) => handleDragOverNav(e, item.id)}
-              onDragLeave={handleDragLeaveNav}
-              onDrop={(e) => handleDropOnNav(e, item.id)}
-              className={`flex items-center rounded-lg p-2 text-xs font-medium transition-all group cursor-pointer ${
-                isSidebarCollapsed ? "justify-center" : "justify-between"
-              } ${
-                isActive
-                  ? theme === "dark"
-                    ? "bg-zinc-900 text-white font-semibold border-l-2 border-indigo-500 pl-1.5"
-                    : "bg-white text-slate-950 font-semibold shadow-xs border-l-2 border-blue-500 pl-1.5"
-                  : isTargetedDrag
-                  ? "bg-blue-500/15 border border-dashed border-blue-500 pl-1.5"
-                  : theme === "dark"
-                  ? "hover:bg-zinc-900/60 text-zinc-400 hover:text-zinc-200"
-                  : "hover:bg-slate-100/60 text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <item.icon
-                  size={15}
-                  className={`transition-colors ${
-                    isActive
-                      ? "text-blue-500 dark:text-indigo-400"
-                      : "text-slate-400 group-hover:text-slate-600 dark:text-zinc-500 dark:group-hover:text-zinc-300"
-                  }`}
-                />
-                {!isSidebarCollapsed && <span>{item.label}</span>}
-              </div>
-              {!isSidebarCollapsed && item.badge !== null && (
-                <span
-                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                    isActive
-                      ? "bg-blue-100 dark:bg-zinc-800 text-blue-600 dark:text-indigo-400"
-                      : "bg-slate-200/50 dark:bg-zinc-900 text-slate-500 dark:text-zinc-500"
-                  }`}
-                >
-                  {item.badge}
+      {/* Navigation */}
+      <nav id="main-navigation-section" aria-label="Notes navigation" className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-2">
+        <div className="flex flex-col gap-px">
+          {mainNavItems.map((item) => {
+            const isActive = activeFolder === item.id && activeTag === null;
+            const isTargetedDrag = dragOverNavId === item.id;
+            return (
+              <button
+                id={`nav-item-${item.id.toLowerCase().replace(" ", "-")}`}
+                key={item.id}
+                type="button"
+                title={collapsed ? item.label : undefined}
+                aria-label={collapsed ? item.label : undefined}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => handleSelectNav(item.id)}
+                onDragOver={(e) => handleDragOverNav(e, item.id)}
+                onDragLeave={handleDragLeaveNav}
+                onDrop={(e) => handleDropOnNav(e, item.id)}
+                className={`${rowBase} ${collapsed ? "justify-center" : "justify-between"} ${
+                  isActive
+                    ? "bg-active font-medium text-fg"
+                    : isTargetedDrag
+                    ? "bg-accent-soft outline-1 outline-dashed outline-accent"
+                    : "text-fg-muted hover:bg-hover hover:text-fg"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <item.icon size={15} className={isActive ? "text-accent" : "text-fg-subtle group-hover:text-fg-muted"} aria-hidden />
+                  {!collapsed && <span>{item.label}</span>}
                 </span>
-              )}
-            </button>
-          );
-        })}
+                {!collapsed && item.badge !== null && (
+                  <span className="text-[11px] tabular-nums text-fg-subtle">{item.badge}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-        {/* Folders Accordion with Unlimited Nesting */}
-        {isSidebarCollapsed ? (
-          <div className="mt-4 flex flex-col items-center gap-1.5 px-2">
-            <div className="w-8 h-px bg-slate-200 dark:bg-zinc-800/80 my-1"></div>
-            {folders.filter(f => !f.parentId).map((folder) => {
+        {/* Folders */}
+        {collapsed ? (
+          <div className="mt-3 flex flex-col items-center gap-1 border-t border-line pt-3">
+            {folders.filter((f) => !f.parentId).map((folder) => {
               const isSelected = activeFolder === folder.id && activeTag === null;
               return (
                 <button
                   key={folder.id}
+                  type="button"
                   onClick={() => handleSelectFolder(folder.id)}
                   title={folder.name}
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs transition-colors cursor-pointer ${
-                    isSelected
-                      ? theme === "dark"
-                        ? "bg-zinc-900 text-indigo-400 font-semibold"
-                        : "bg-white text-blue-600 font-semibold shadow-xs border border-slate-200"
-                      : "text-slate-400 dark:text-zinc-500 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100/40 dark:hover:bg-zinc-900/30"
+                  aria-label={`Folder ${folder.name}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-md text-[14px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
+                    isSelected ? "bg-active" : "hover:bg-hover"
                   }`}
                 >
                   {folder.icon || "📁"}
@@ -1020,44 +1051,53 @@ export default function Sidebar({
             })}
           </div>
         ) : (
-          <div id="folders-section" className="mt-4 px-2" onDragOver={handleDragOverHeader} onDrop={handleDropOnHeader}>
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-1 py-1">
-              <span className="cursor-pointer hover:text-slate-600" title="Drop here to move folder to top-level">Folders</span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleTriggerNewFolder(undefined)}
-                  title="New Folder"
-                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-400"
-                >
-                  <FolderPlus size={12} />
-                </button>
-                <Layers size={11} />
-              </div>
-            </div>
-
-            {/* Folders tree render starting at root */}
-            <div className="flex flex-col gap-0.5 mt-1">
-              {renderFolderTree(undefined)}
-            </div>
+          <div id="folders-section" onDragOver={handleDragOverHeader} onDrop={handleDropOnHeader}>
+            {sectionHeader(
+              "Folders",
+              foldersOpen,
+              () => setFoldersOpen(!foldersOpen),
+              <IconButton label="New folder" size="sm" onClick={() => handleTriggerNewFolder(undefined)}>
+                <FolderPlus size={13} />
+              </IconButton>,
+            )}
+            {foldersOpen &&
+              (folders.length === 0 && creatingInParentId !== "root" ? (
+                <p className="px-2 py-1 text-[12px] text-fg-subtle">No folders yet. Create one to organize notes.</p>
+              ) : (
+                renderFolderTree(undefined)
+              ))}
           </div>
         )}
 
-        {/* Tags Section */}
-        {isSidebarCollapsed ? (
+        {/* Smart folders */}
+        {!collapsed && smartFolders && onSaveSmartFolder && onDeleteSmartFolder && (
+          <SmartFoldersSection
+            smartFolders={smartFolders}
+            notes={notes}
+            folders={folders}
+            activeFolder={activeFolder}
+            onSelect={handleSelectFolder}
+            onSave={onSaveSmartFolder}
+            onDelete={onDeleteSmartFolder}
+          />
+        )}
+
+        {/* Tags */}
+        {collapsed ? (
           tags.length > 0 && (
-            <div className="mt-4 flex flex-col items-center gap-1.5 px-2">
-              <div className="w-8 h-px bg-slate-200 dark:bg-zinc-800/80 my-1"></div>
+            <div className="mt-3 flex flex-col items-center gap-1 border-t border-line pt-3">
               {tags.map((tag) => {
                 const isSelected = activeTag === tag;
                 return (
                   <button
                     key={tag}
+                    type="button"
                     onClick={() => handleSelectTag(tag)}
                     title={`Tag: #${tag}`}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-mono transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-blue-500 text-white font-medium"
-                        : "bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200/60 dark:hover:bg-zinc-800 text-slate-400 dark:text-zinc-500 hover:text-slate-800 dark:hover:text-zinc-200"
+                    aria-label={`Tag ${tag}`}
+                    aria-pressed={isSelected}
+                    className={`flex h-10 w-10 items-center justify-center rounded-md text-[13px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
+                      isSelected ? "bg-accent-soft text-accent" : "text-fg-subtle hover:bg-hover hover:text-fg"
                     }`}
                   >
                     #
@@ -1068,378 +1108,210 @@ export default function Sidebar({
           )
         ) : (
           topTags.length > 0 && (
-            <div id="tags-section" className="mt-4 px-2">
-              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-1 py-1">
-                <span>Tags</span>
-                <Tag size={11} />
-              </div>
-              <div className="flex flex-wrap gap-1 mt-1.5 px-1">
-                {topTags.map((tag) => {
-                  const isSelected = activeTag === tag;
-                  return (
-                    <button
-                      id={`tag-badge-${tag.toLowerCase()}`}
-                      key={tag}
-                      onClick={() => handleSelectTag(tag)}
-                      className={`text-[11px] px-2 py-0.5 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
-                        isSelected
-                          ? "bg-blue-500 text-white font-medium"
-                          : "bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200/60 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-400"
-                      }`}
-                    >
-                      <span className="opacity-60">#</span>
-                      <span>{tag}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div id="tags-section">
+              {sectionHeader("Tags", tagsOpen, () => setTagsOpen(!tagsOpen))}
+              {tagsOpen && (
+                <div className="flex flex-col gap-px">
+                  {topTags.map((tag) => {
+                    const isSelected = activeTag === tag;
+                    return (
+                      <button
+                        id={`tag-badge-${tag.toLowerCase()}`}
+                        key={tag}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => handleSelectTag(tag)}
+                        className={`${rowBase} gap-2.5 ${
+                          isSelected ? "bg-accent-soft font-medium text-accent" : "text-fg-muted hover:bg-hover hover:text-fg"
+                        }`}
+                      >
+                        <Tag size={13} className={isSelected ? "text-accent" : "text-fg-subtle"} aria-hidden />
+                        <span className="truncate">{tag}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )
         )}
-      </div>
 
-      {/* Footer / Settings, Storage & Profile */}
-      <div
-        ref={userProfileRef}
-        id="sidebar-footer"
-        className={`mt-auto p-3 border-t relative ${
-          theme === "dark" ? "border-zinc-800/80 bg-zinc-950/20" : "border-slate-200/60 bg-slate-50/50"
-        }`}
-      >
-        {/* User Profile Popover */}
-        {showUserProfileMenu && (
-          <div
-            id="user-profile-popover"
-            className={`absolute z-50 flex flex-col gap-3 animate-fade-in ${
-              isSidebarCollapsed
-                ? "left-14 w-60 bottom-2 mb-0"
-                : "bottom-full left-3 right-3 mb-2"
-            } rounded-2xl shadow-2xl border p-3.5 ${
-              theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
-            }`}
-          >
-            {/* Header info */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white bg-gradient-to-tr from-indigo-500 to-pink-500 shadow-sm">
-                {currentUserEmail ? currentUserEmail[0].toUpperCase() : "U"}
+        {/* Workspace links */}
+        {!collapsed && (
+          <div className="mb-2">
+            {sectionHeader("Workspace", linksOpen, () => setLinksOpen(!linksOpen))}
+            {linksOpen && (
+              <div className="flex flex-col gap-px">
+                {[
+                  { to: "/org/org-aura-main", label: "Organization", icon: Building2 },
+                  { to: "/org/org-aura-main/agents", label: "Agent Studio", icon: Bot },
+                  { to: "/org/org-aura-main/workflows", label: "Workflows", icon: Workflow },
+                ].map((l) => (
+                  <Link key={l.to} to={l.to} className={`${rowBase} gap-2.5 text-fg-muted hover:bg-hover hover:text-fg`}>
+                    <l.icon size={15} className="text-fg-subtle group-hover:text-fg-muted" aria-hidden />
+                    <span>{l.label}</span>
+                  </Link>
+                ))}
               </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-semibold truncate">
-                  {currentUserEmail ? currentUserEmail.split("@")[0] : "Enterprise Guest"}
-                </span>
-                <span className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">
-                  {currentUserEmail || "sandbox@aura.io"}
-                </span>
-              </div>
-            </div>
-
-            {/* Actions list */}
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => {
-                  onOpenSettings();
-                  setShowUserProfileMenu(false);
-                }}
-                className={`flex items-center gap-2.5 w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                  theme === "dark"
-                    ? "hover:bg-zinc-900 text-zinc-350 hover:text-white"
-                    : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Settings size={13} className="opacity-70" />
-                <span>Account Settings</span>
-              </button>
-
-              <Link
-                to="/network-status"
-                onClick={() => setShowUserProfileMenu(false)}
-                className={`flex items-center gap-2.5 w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                  theme === "dark"
-                    ? "hover:bg-zinc-900 text-zinc-350 hover:text-white"
-                    : "hover:bg-slate-50 text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Activity size={13} className="opacity-70 text-blue-500" />
-                <span>System Diagnostics</span>
-              </Link>
-
-              {onSignOut && (
-                <button
-                  onClick={() => {
-                    onSignOut();
-                    setShowUserProfileMenu(false);
-                  }}
-                  className="flex items-center gap-2.5 w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer text-rose-500 hover:bg-rose-50/50 dark:hover:bg-rose-950/20"
-                >
-                  <LogOut size={13} />
-                  <span>Sign Out</span>
-                </button>
-              )}
-            </div>
+            )}
           </div>
         )}
+      </nav>
 
-        {/* Cloud Storage Sync */}
-        {!isSidebarCollapsed && (
-          <div className="mb-2 px-1 flex flex-col gap-1.5 select-none">
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="flex items-center gap-1 text-slate-400 dark:text-zinc-500 font-medium">
-                <Database size={10} />
-                Cloud Storage Sync
+      {/* Footer */}
+      <div id="sidebar-footer" className="relative mt-auto shrink-0 border-t border-line p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {!collapsed && (
+          <div className="mb-2 flex flex-col gap-1 px-1">
+            <div className="flex items-center justify-between text-[11px] text-fg-subtle">
+              <span className="flex items-center gap-1">
+                <Database size={10} aria-hidden />
+                Storage
               </span>
-              <span className="text-slate-500 dark:text-zinc-400 font-mono">
-                {storageUsed}KB / {activeWorkspace?.storageQuota ? (activeWorkspace.storageQuota > 10000 ? Math.round(activeWorkspace.storageQuota / (1024 * 1024)) : activeWorkspace.storageQuota) : 5}MB
+              <span className="tabular-nums">
+                {storageUsed}KB / {quotaMb}MB
               </span>
             </div>
-            <div className="w-full h-1 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  parseFloat(storagePercentage) > 85
-                    ? "bg-rose-500"
-                    : parseFloat(storagePercentage) > 60
-                    ? "bg-amber-500"
-                    : "bg-blue-500"
-                }`}
-                style={{ width: `${storagePercentage}%` }}
-              ></div>
-            </div>
-          </div>
-        )}
-
-        {/* Clickable User profile strip */}
-        <button
-          id="user-profile-section"
-          onClick={() => setShowUserProfileMenu(!showUserProfileMenu)}
-          className={`flex items-center gap-2.5 w-full p-1.5 rounded-xl transition-all text-left cursor-pointer hover:bg-slate-100/80 dark:hover:bg-zinc-800/80 ${
-            showUserProfileMenu ? "bg-slate-100 dark:bg-zinc-800" : ""
-          } ${isSidebarCollapsed ? "justify-center" : ""}`}
-        >
-          <div className="relative flex-shrink-0">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center font-display font-bold text-white shadow-sm border border-border-primary bg-bg-secondary"
+              role="progressbar"
+              aria-label="Storage used"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={parseFloat(storagePercentage)}
+              className="h-1 w-full overflow-hidden rounded-full bg-active"
             >
               <div
-                className={`w-6.5 h-6.5 rounded-full flex items-center justify-center text-[10px] text-white bg-gradient-to-tr from-indigo-500 to-pink-500`}
-              >
-                {currentUserEmail ? currentUserEmail[0].toUpperCase() : "U"}
-              </div>
+                className={`h-full rounded-full transition-[width] duration-300 ${
+                  parseFloat(storagePercentage) > 85 ? "bg-danger" : parseFloat(storagePercentage) > 60 ? "bg-warning" : "bg-accent"
+                }`}
+                style={{ width: `${storagePercentage}%` }}
+              />
             </div>
-            <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#FAFAFC] dark:border-[#09090B] rounded-full ${isOnline !== false ? "bg-emerald-500" : "bg-rose-500"}`}></div>
           </div>
+        )}
 
-          {!isSidebarCollapsed && (
-            <div className="flex-grow flex items-center justify-between min-w-0">
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 truncate">
-                  {currentUserEmail ? currentUserEmail.split("@")[0] : "Enterprise Guest"}
+        <div className="[&>div]:block [&>div]:w-full">
+        <Menu
+          align="start"
+          className={`bottom-full mb-1 mt-0 ${collapsed ? "w-56" : "w-[calc(240px-1rem)]"}`}
+          items={profileItems}
+          trigger={({ props }) => (
+            <button
+              id="user-profile-section"
+              type="button"
+              aria-label={`Account menu for ${userName}`}
+              {...props}
+              className={`flex min-h-10 items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent ${
+                collapsed ? "justify-center" : "w-full"
+              }`}
+            >
+              <span className="relative shrink-0">
+                <Avatar name={userName} size={26} />
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar ${isOnline !== false ? "bg-success" : "bg-danger"}`}
+                  aria-hidden
+                />
+              </span>
+              {!collapsed && (
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[13px] font-medium leading-tight text-fg">{userName}</span>
+                  <span className="truncate text-[11px] leading-tight text-fg-subtle">{isOnline !== false ? "Connected" : "Offline"}</span>
                 </span>
-                <span className="text-[9px] text-slate-400 dark:text-zinc-500 truncate flex items-center gap-1 mt-0.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline !== false ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
-                  {isOnline !== false ? "Connected" : "Offline"}
-                </span>
-              </div>
-              <ChevronDown size={12} className={`text-slate-400 transition-transform ${showUserProfileMenu ? "rotate-180" : ""}`} />
-            </div>
+              )}
+              {!collapsed && <ChevronsUpDown size={13} className="shrink-0 text-fg-subtle" aria-hidden />}
+            </button>
           )}
-        </button>
+        />
+        </div>
       </div>
 
-      {/* Context Menu Popup Overlay */}
-      {contextMenuFolderId && contextMenuPosition && (
+      {/* Folder context menu */}
+      {ctxFolder && contextMenuPosition && (
         <div
-          className={`fixed border p-1.5 rounded-2xl shadow-2xl flex flex-col gap-0.5 z-50 min-w-44 ${
-            theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-white border-slate-200 text-slate-700"
-          }`}
-          style={{ top: `${contextMenuPosition.y}px`, left: `${contextMenuPosition.x}px` }}
+          role="menu"
+          aria-label={`Actions for ${ctxFolder.name}`}
+          className="fixed z-50 flex min-w-48 flex-col gap-px rounded-lg border border-line bg-raised p-1 shadow-pop"
+          style={{ top: `${Math.min(contextMenuPosition.y, window.innerHeight - 190)}px`, left: `${Math.min(contextMenuPosition.x, window.innerWidth - 200)}px` }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* New Note */}
           <button
+            role="menuitem"
             onClick={() => {
-              const f = folders.find((fol) => fol.id === contextMenuFolderId);
-              if (f) {
-                // Trigger normal note creation with this folder pre-selected
-                onNewNote();
-                setTimeout(() => {
-                  const event = new CustomEvent("aura-preselect-note-folder", { detail: f.id });
-                  window.dispatchEvent(event);
-                }, 100);
-              }
+              onNewNote();
+              setTimeout(() => {
+                const event = new CustomEvent("aura-preselect-note-folder", { detail: ctxFolder.id });
+                window.dispatchEvent(event);
+              }, 100);
               setContextMenuFolderId(null);
             }}
-            className="text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-zinc-900"
+            className={ctxItem}
           >
-            <Plus size={13} className="text-blue-500" />
-            <span>New Note here</span>
+            <Plus size={14} className="text-fg-muted" aria-hidden />
+            <span>New note here</span>
           </button>
-
-          {/* New Sub-folder */}
           <button
+            role="menuitem"
             onClick={() => {
               if (contextMenuFolderId) handleTriggerNewFolder(contextMenuFolderId);
               setContextMenuFolderId(null);
             }}
-            className="text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-zinc-900"
+            className={ctxItem}
           >
-            <FolderPlus size={13} className="text-indigo-500" />
-            <span>Create Sub-folder</span>
+            <FolderPlus size={14} className="text-fg-muted" aria-hidden />
+            <span>Create sub-folder</span>
           </button>
-
-          {/* Rename / Customize */}
           <button
+            role="menuitem"
             onClick={() => {
-              const fol = folders.find((fo) => fo.id === contextMenuFolderId);
-              if (fol) handleTriggerRename(fol);
+              handleTriggerRename(ctxFolder);
               setContextMenuFolderId(null);
             }}
-            className="text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-zinc-900"
+            className={ctxItem}
           >
-            <Edit size={13} className="text-amber-500" />
-            <span>Rename / Customize</span>
+            <Edit size={14} className="text-fg-muted" aria-hidden />
+            <span>Rename / customize</span>
           </button>
-
-          <hr className="my-1 border-slate-100 dark:border-zinc-800" />
-
-          {/* Delete Folder */}
+          <div role="separator" className="my-1 h-px bg-line" />
           <button
+            role="menuitem"
             onClick={() => {
               if (contextMenuFolderId) handleRequestDeleteFolder(contextMenuFolderId);
               setContextMenuFolderId(null);
             }}
-            className="text-left text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-rose-500 hover:bg-rose-50/50 dark:hover:bg-rose-950/20"
+            className={`${ctxItem} !text-danger`}
           >
-            <Trash size={13} />
-            <span>Delete Folder</span>
+            <Trash size={14} aria-hidden />
+            <span>Delete folder</span>
           </button>
         </div>
       )}
 
-      {/* Safe Deletion Confirmation Modal Overlay */}
-      {deleteConfirmFolderId && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setDeleteConfirmFolderId(null);
-            }
-          }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 cursor-pointer"
-        >
-          <div className={`p-6 rounded-3xl max-w-md w-full border shadow-2xl flex flex-col gap-4 cursor-default ${
-            theme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-800"
-          }`}>
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-500/10 flex items-center justify-center shrink-0">
-                <Trash2 className="text-rose-500" size={20} />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <h3 className="text-sm font-bold truncate">Safe Folder Deletion</h3>
-                <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 leading-relaxed">
-                  The folder <strong>"{folders.find((f) => f.id === deleteConfirmFolderId)?.name}"</strong> contains{" "}
-                  <strong>{getFolderNotesCount(deleteConfirmFolderId)} notes</strong> inside it.
-                  Please select how you'd like to handle these notes before deleting:
-                </p>
-              </div>
-            </div>
-
-            {/* Selection modes radio list */}
-            <div className="flex flex-col gap-2 mt-2">
-              <label className={`p-3 rounded-2xl border flex items-center gap-3 cursor-pointer ${
-                deleteMode === "uncategorize" ? "border-blue-500 bg-blue-500/5" : "border-slate-200 dark:border-zinc-800"
-              }`}>
-                <input
-                  type="radio"
-                  name="deleteMode"
-                  checked={deleteMode === "uncategorize"}
-                  onChange={() => setDeleteMode("uncategorize")}
-                  className="hidden"
-                />
-                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                  deleteMode === "uncategorize" ? "border-blue-500" : "border-slate-400"
-                }`}>
-                  {deleteMode === "uncategorize" && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold">Move to Uncategorized (Default)</span>
-                  <span className="text-[10px] opacity-60">Keeps the documents intact under the default folder</span>
-                </div>
-              </label>
-
-              <label className={`p-3 rounded-2xl border flex flex-col gap-2 cursor-pointer ${
-                deleteMode === "move" ? "border-blue-500 bg-blue-500/5" : "border-slate-200 dark:border-zinc-800"
-              }`}>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="deleteMode"
-                    checked={deleteMode === "move"}
-                    onChange={() => setDeleteMode("move")}
-                    className="hidden"
-                  />
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                    deleteMode === "move" ? "border-blue-500" : "border-slate-400"
-                  }`}>
-                    {deleteMode === "move" && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
-                  </div>
-                  <span className="text-xs font-semibold">Move notes to another folder:</span>
-                </div>
-
-                {deleteMode === "move" && (
-                  <select
-                    value={deleteTargetFolderId}
-                    onChange={(e) => setDeleteTargetFolderId(e.target.value)}
-                    className={`text-xs ml-7 p-2 rounded-xl outline-none border bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-zinc-200`}
-                  >
-                    {folders
-                      .filter((f) => f.id !== deleteConfirmFolderId)
-                      .map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.icon || "📁"} {f.name}
-                        </option>
-                      ))}
-                  </select>
-                )}
-              </label>
-
-              <label className={`p-3 rounded-2xl border flex items-center gap-3 cursor-pointer ${
-                deleteMode === "trash" ? "border-rose-500 bg-rose-500/5" : "border-slate-200 dark:border-zinc-800"
-              }`}>
-                <input
-                  type="radio"
-                  name="deleteMode"
-                  checked={deleteMode === "trash"}
-                  onChange={() => setDeleteMode("trash")}
-                  className="hidden"
-                />
-                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                  deleteMode === "trash" ? "border-rose-500" : "border-slate-400"
-                }`}>
-                  {deleteMode === "trash" && <div className="w-2 h-2 bg-rose-500 rounded-full" />}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-rose-500">Move folder and notes to Trash</span>
-                  <span className="text-[10px] opacity-60">Safely trashes everything; can be recovered later</span>
-                </div>
-              </label>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center justify-end gap-2 mt-4">
-              <button
-                onClick={() => setDeleteConfirmFolderId(null)}
-                className={`px-4 py-2 text-xs font-semibold rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-900`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDeleteFolder}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-500 text-white hover:bg-rose-600 shadow-md shadow-rose-500/10"
-              >
-                Execute Safe Deletion
-              </button>
-            </div>
-          </div>
+      {/* Safe deletion dialog */}
+      <Dialog
+        open={!!deleteConfirmFolderId}
+        onClose={() => setDeleteConfirmFolderId(null)}
+        title="Delete folder"
+        description={
+          deleteConfirmFolderId
+            ? `"${deleteFolder?.name ?? ""}" contains ${getFolderNotesCount(deleteConfirmFolderId)} notes. Choose what happens to them.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteConfirmFolderId(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleConfirmDeleteFolder}>
+              Delete folder
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          {radio("uncategorize", "Move to Uncategorized", "Keeps the notes under the default folder.")}
+          {radio("move", "Move notes to another folder", "Pick a destination below.")}
+          {radio("trash", "Move folder and notes to Trash", "Everything can be recovered from Trash later.", true)}
         </div>
-      )}
+      </Dialog>
     </motion.div>
   );
 }

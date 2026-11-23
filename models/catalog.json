@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "generatedNote": "Candidates only, not an endorsement. Fields were read from the Hugging Face model API (api/models/<repo>) on dateChecked via a page-summarising fetch tool, so re-verify against the card before adopting. sizeBytes, sha256, minRamMb are null: never measured. No benchmark scores are recorded. 'formats' lists formats observed in that repo only; GGUF/ONNX conversions by third parties were NOT checked.",
+  "models": [
+    {
+      "id": "quick-phi-4-mini", "role": "quick-actions", "hfRepo": "microsoft/Phi-4-mini-instruct",
+      "license": "mit", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 3836021760, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/microsoft/Phi-4-mini-instruct", "dateChecked": "2026-11-23", "verified": true,
+      "notes": "No GGUF/ONNX files in the official repo as observed; quantised builds must be sourced and hashed separately."
+    },
+    {
+      "id": "quick-smollm3-3b", "role": "quick-actions", "hfRepo": "HuggingFaceTB/SmolLM3-3B",
+      "license": "apache-2.0", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 3075098624, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/HuggingFaceTB/SmolLM3-3B", "dateChecked": "2026-11-23", "verified": true
+    },
+    {
+      "id": "quick-llama-3-2-3b", "role": "quick-actions", "hfRepo": "meta-llama/Llama-3.2-3B-Instruct",
+      "license": "llama3.2", "licenseClass": "custom-terms", "commercialUse": "unknown",
+      "parameters": 3212749824, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct", "dateChecked": "2026-11-23", "verified": true, "gated": true,
+      "notes": "Custom Llama community license with usage terms; gated (manual approval). Needs legal review before allow-listing."
+    },
+    {
+      "id": "brain-qwen3-8b", "role": "agent-brain", "hfRepo": "Qwen/Qwen3-8B",
+      "license": "apache-2.0", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 8190735360, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/Qwen/Qwen3-8B", "dateChecked": "2026-11-23", "verified": true,
+      "notes": "Tool-call validity NOT yet measured; must pass Aura-Bench before use."
+    },
+    {
+      "id": "embed-qwen3-0-6b", "role": "embedding", "hfRepo": "Qwen/Qwen3-Embedding-0.6B",
+      "license": "apache-2.0", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 595776512, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B", "dateChecked": "2026-11-23", "verified": true
+    },
+    {
+      "id": "embed-bge-m3", "role": "embedding", "hfRepo": "BAAI/bge-m3",
+      "license": "mit", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": null, "formats": ["onnx"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/BAAI/bge-m3", "dateChecked": "2026-11-23", "verified": false,
+      "notes": "License and onnx/model.onnx confirmed; parameter count not confirmed (safetensors metadata absent from the API response), so verified=false. Repo may also ship pytorch weights - not checked."
+    },
+    {
+      "id": "embed-embeddinggemma-300m", "role": "embedding", "hfRepo": "google/embeddinggemma-300m",
+      "license": "gemma", "licenseClass": "custom-terms", "commercialUse": "unknown",
+      "parameters": 302863104, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/google/embeddinggemma-300m", "dateChecked": "2026-11-23", "verified": true, "gated": true,
+      "notes": "Gemma terms of use apply; gated (manual). Resolves the plan's 'disputed license' question: card says 'gemma' (custom terms), not Apache/MIT."
+    },
+    {
+      "id": "rerank-qwen3-0-6b", "role": "reranker", "hfRepo": "Qwen/Qwen3-Reranker-0.6B",
+      "license": "apache-2.0", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 595776512, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B", "dateChecked": "2026-11-23", "verified": true
+    },
+    {
+      "id": "rerank-bge-v2-m3", "role": "reranker", "hfRepo": "BAAI/bge-reranker-v2-m3",
+      "license": "apache-2.0", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 567755777, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/BAAI/bge-reranker-v2-m3", "dateChecked": "2026-11-23", "verified": true
+    },
+    {
+      "id": "stt-whisper-large-v3-turbo", "role": "speech-to-text", "hfRepo": "openai/whisper-large-v3-turbo",
+      "license": "mit", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 808878080, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/openai/whisper-large-v3-turbo", "dateChecked": "2026-11-23", "verified": true,
+      "notes": "whisper.cpp ggml conversions exist elsewhere; not checked here."
+    },
+    {
+      "id": "vision-qwen2-5-vl-3b", "role": "ocr-vision", "hfRepo": "Qwen/Qwen2.5-VL-3B-Instruct",
+      "license": "qwen-research", "licenseClass": "non-commercial", "commercialUse": "no",
+      "parameters": 3754622976, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct", "dateChecked": "2026-11-23", "verified": true,
+      "notes": "Card has no 'license' field; license_name is qwen-research (research license). Treated as non-commercial pending reading the LICENSE file; excluded from enterprise allow-list. Prefer OS OCR first."
+    },
+    {
+      "id": "safety-granite-guardian-3-2-5b", "role": "safety", "hfRepo": "ibm-granite/granite-guardian-3.2-5b",
+      "license": "apache-2.0", "licenseClass": "permissive", "commercialUse": "yes",
+      "parameters": 5779996672, "formats": ["safetensors"], "sizeBytes": null, "sha256": null, "minRamMb": null,
+      "sourceUrl": "https://huggingface.co/ibm-granite/granite-guardian-3.2-5b", "dateChecked": "2026-11-23", "verified": true,
+      "notes": "Rules/regex PII+DLP stays first line; this is a second-line classifier. Not evaluated."
+    }
+  ]
+}

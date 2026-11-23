@@ -1,6 +1,11 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Search, FileText, Pin, Trash2, Settings as SettingsIcon, Sparkles, Sun, Moon, CornerDownLeft, Layers, CheckSquare, Globe } from "lucide-react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { Search, FileText, Trash2, Settings as SettingsIcon, Sparkles, Sun, Moon, CornerDownLeft, Layers } from "lucide-react";
+import { Kbd, Segmented, EmptyState } from "../ui";
 import { Note, Workspace } from "../types";
+import type { NoteIndexes } from "../features/indexes/useNoteIndexes";
+import { searchNotes } from "../features/search/searchNotes";
+import SnippetText from "../features/search/SnippetText";
+import type { Snippet } from "../core/search";
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -18,6 +23,8 @@ interface CommandPaletteProps {
   activeWorkspaceId: string;
   workspaces: Workspace[];
   onSelectWorkspace: (id: string) => void;
+  /** When ready, note results come from the SearchIndex (ranked, with highlighted snippets). */
+  indexes?: NoteIndexes;
 }
 
 export default function CommandPalette({
@@ -36,6 +43,7 @@ export default function CommandPalette({
   activeWorkspaceId,
   workspaces,
   onSelectWorkspace,
+  indexes,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [searchScope, setSearchScope] = useState<"current" | "all">("current");
@@ -133,11 +141,20 @@ export default function CommandPalette({
     return !note.isArchived && !note.isTrashed;
   });
 
+  // Index-backed search covers the active workspace only; "all workspaces" keeps the plain filter.
+  const hitResult = useMemo(() => {
+    if (!isOpen || !indexes || indexes.status === "building" || searchScope !== "current" || !query.trim()) return null;
+    void indexes.version;
+    try { return searchNotes(indexes.search, query, { workspaceId: activeWorkspaceId, limit: 30 }); } catch { return null; }
+  }, [isOpen, indexes, indexes?.version, indexes?.status, searchScope, query, activeWorkspaceId]);
+
   const noteCommands = filteredNotesByScope.map((note) => {
     const originWorkspace = workspaces.find((w) => w.id === note.workspaceId);
     const workspaceLabel = originWorkspace ? originWorkspace.name : "Core Workspace";
     return {
       id: `note-${note.id}`,
+      noteId: note.id,
+      snippet: undefined as Snippet | undefined,
       title: `Open Note: ${note.title}`,
       subtitle: `[${workspaceLabel}] • ${note.folder || "Uncategorized"}`,
       icon: FileText,
@@ -156,14 +173,24 @@ export default function CommandPalette({
     };
   });
 
-  const allCommands = [...systemCommands, ...folderCommands, ...noteCommands];
-
-  // Filter commands by search query
-  const filteredCommands = allCommands.filter((cmd) => {
+  const otherCommands = [...systemCommands, ...folderCommands].map((c) => ({ ...c, noteId: undefined as string | undefined, snippet: undefined as Snippet | undefined }));
+  const textFilter = (cmd: { title: string; subtitle: string }) => {
     if (!query) return true;
     const sQuery = query.toLowerCase();
     return cmd.title.toLowerCase().includes(sQuery) || cmd.subtitle.toLowerCase().includes(sQuery);
-  });
+  };
+
+  let filteredCommands: typeof otherCommands;
+  if (hitResult) {
+    const byId = new Map(noteCommands.map((c) => [c.noteId, c]));
+    const ranked = hitResult.order.flatMap((id) => {
+      const c = byId.get(id);
+      return c ? [{ ...c, snippet: hitResult.hits.get(id)?.snippet }] : [];
+    });
+    filteredCommands = [...otherCommands.filter(textFilter), ...ranked];
+  } else {
+    filteredCommands = [...otherCommands, ...noteCommands].filter(textFilter);
+  }
 
   // Handle keyboard events
   useEffect(() => {
@@ -193,126 +220,104 @@ export default function CommandPalette({
 
   if (!isOpen) return null;
 
+  const groupOf = (id: string) => (id.startsWith("note-") ? "Notes" : id.startsWith("folder-") ? "Folders" : "Commands");
+
   return (
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex justify-center pt-[12vh] p-4 bg-black/60 backdrop-blur-xs select-none"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-start sm:p-4 sm:pt-[12vh]"
     >
       <div
         id="command-palette-modal"
-        className="w-full max-w-lg h-[410px] rounded-2xl shadow-2xl flex flex-col border border-border-primary overflow-hidden transition-all duration-200 bg-bg-secondary text-text-primary"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="flex h-[min(70dvh,480px)] w-full max-w-xl flex-col overflow-hidden rounded-t-xl border border-line bg-raised pb-[env(safe-area-inset-bottom)] text-fg shadow-pop sm:rounded-xl"
       >
-        {/* Search Input Bar */}
-        <div className="relative p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center gap-3 shrink-0">
-          <Search size={16} className="text-slate-400 dark:text-zinc-500" />
+        <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-4">
+          <Search size={16} className="text-fg-subtle" aria-hidden />
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search notes, folders or commands across workspaces..."
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-list"
+            aria-label="Search notes, folders and commands"
+            placeholder="Search notes, folders or commands..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            className="w-full text-xs border-none outline-none focus:ring-0 bg-transparent text-slate-900 dark:text-zinc-100"
+            className="h-full w-full bg-transparent text-[14px] text-fg outline-none placeholder:text-fg-subtle"
           />
-          <span className="text-[10px] opacity-40 uppercase tracking-widest font-mono">
-            ⌘K
-          </span>
+          <Kbd>Esc</Kbd>
         </div>
 
-        {/* Workspace Scope Selection Bar */}
-        <div className={`px-4 py-2 border-b flex justify-between items-center shrink-0 ${
-          theme === "dark" ? "bg-zinc-950/40 border-zinc-800" : "bg-slate-50 border-slate-100"
-        }`}>
-          <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 font-mono uppercase tracking-wider">
-            Search Scope
-          </span>
-          <div className="flex gap-1.5 bg-slate-200/50 dark:bg-zinc-900 p-0.5 rounded-lg text-[10px] font-semibold">
-            <button
-              onClick={() => {
-                setSearchScope("current");
-                setSelectedIndex(0);
-              }}
-              className={`px-2 py-1 rounded-md cursor-pointer transition-colors ${
-                searchScope === "current"
-                  ? theme === "dark" ? "bg-zinc-800 text-white" : "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-400 hover:text-slate-700 dark:hover:text-zinc-300"
-              }`}
-            >
-              Current Workspace
-            </button>
-            <button
-              onClick={() => {
-                setSearchScope("all");
-                setSelectedIndex(0);
-              }}
-              className={`px-2 py-1 rounded-md cursor-pointer transition-colors flex items-center gap-1 ${
-                searchScope === "all"
-                  ? theme === "dark" ? "bg-zinc-800 text-white" : "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-400 hover:text-slate-700 dark:hover:text-zinc-300"
-              }`}
-            >
-              <Globe size={10} className="text-blue-500 animate-pulse" />
-              <span>All Workspaces</span>
-            </button>
-          </div>
+        <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2">
+          <span className="text-[11px] font-medium text-fg-muted">Scope</span>
+          <Segmented
+            size="sm"
+            value={searchScope}
+            onChange={(v) => {
+              setSearchScope(v);
+              setSelectedIndex(0);
+            }}
+            items={[
+              { id: "current", label: "Current workspace" },
+              { id: "all", label: "All workspaces" },
+            ]}
+          />
         </div>
 
-        {/* Results Stream */}
-        <div className="flex-grow overflow-y-auto p-2 flex flex-col gap-0.5 scrollbar-none no-scrollbar">
+        <div id="command-palette-list" role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {filteredCommands.length > 0 ? (
             filteredCommands.map((cmd, index) => {
               const isSelected = index === selectedIndex;
               const Icon = cmd.icon;
+              const group = groupOf(cmd.id);
+              const showHeader = index === 0 || groupOf(filteredCommands[index - 1].id) !== group;
               return (
-                <button
-                  key={cmd.id}
-                  onClick={cmd.action}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={`w-full text-left p-3 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                    isSelected
-                      ? theme === "dark"
-                        ? "bg-zinc-800 text-white"
-                        : "bg-blue-500 text-white shadow-sm"
-                      : theme === "dark"
-                      ? "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                      : "text-slate-600 hover:text-slate-950 hover:bg-slate-50"
-                  } cursor-pointer`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon size={14} className={isSelected ? "text-white" : "text-blue-500"} />
-                    <div className="flex flex-col">
-                      <span className="font-semibold">{cmd.title}</span>
-                      <span className={`text-[9.5px] opacity-60 mt-0.5 ${isSelected ? "text-white/85" : ""}`}>
-                        {cmd.subtitle}
-                      </span>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <CornerDownLeft size={12} className="opacity-60" />
+                <React.Fragment key={cmd.id}>
+                  {showHeader && (
+                    <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium text-fg-subtle">{group}</div>
                   )}
-                </button>
+                  <button
+                    role="option"
+                    aria-selected={isSelected}
+                    ref={(el) => { if (isSelected && el) el.scrollIntoView({ block: "nearest" }); }}
+                    onClick={cmd.action}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={`flex min-h-10 w-full items-center gap-3 rounded-md px-2.5 py-1.5 text-left outline-none transition-colors ${
+                      isSelected ? "bg-accent-soft" : "hover:bg-hover"
+                    }`}
+                  >
+                    <Icon size={15} className={isSelected ? "shrink-0 text-accent" : "shrink-0 text-fg-muted"} aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-fg">{cmd.title}</span>
+                      <span className="block truncate text-[12px] text-fg-muted">{cmd.snippet ? <SnippetText snippet={cmd.snippet} /> : cmd.subtitle}</span>
+                    </span>
+                    {isSelected && <CornerDownLeft size={13} className="shrink-0 text-fg-subtle" aria-hidden />}
+                  </button>
+                </React.Fragment>
               );
             })
           ) : (
-            <div className="h-44 flex flex-col items-center justify-center text-center opacity-40">
-              <Search size={20} className="mb-1" />
-              <span className="text-xs">No matching actions or documents found</span>
-            </div>
+            <EmptyState
+              icon={<Search size={18} />}
+              title="No results"
+              description={query ? `Nothing matches "${query}". Try another term or widen the scope.` : "No actions or documents found."}
+            />
           )}
         </div>
 
-        {/* Footer shortcuts helper */}
-        <div className={`p-3 text-[10px] font-mono border-t flex items-center justify-between shrink-0 ${
-          theme === "dark" ? "bg-zinc-950/20 border-zinc-800 text-zinc-500" : "bg-slate-50/50 border-slate-200 text-slate-400"
-        }`}>
-          <div className="flex gap-3">
-            <span>↑↓ Navigate</span>
-            <span>↵ Select</span>
+        <div className="hidden shrink-0 items-center justify-between border-t border-line px-4 py-2 text-[11px] text-fg-muted sm:flex">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> Navigate</span>
+            <span className="flex items-center gap-1"><Kbd>↵</Kbd> Select</span>
           </div>
-          <span>Esc to exit</span>
+          <span className="flex items-center gap-1"><Kbd>Esc</Kbd> Close</span>
         </div>
       </div>
     </div>

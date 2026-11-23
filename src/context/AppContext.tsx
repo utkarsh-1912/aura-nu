@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
-import { UserTier, OrgRole, Organization } from "../types";
-import { getTierPermissions, TierPermissions } from "../lib/tierPermissions";
+import { UserTier, OrgRole, Organization, TierPermissions } from "../types";
+import { getTierPermissions } from "../lib/tierPermissions";
 
 interface UserProfile {
   email: string;

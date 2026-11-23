@@ -1,29 +1,95 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Tomorrow:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
 
+/* ── Aura design tokens (see docs/design-system.md) ─────────────────────────
+   Semantic, theme-aware. Use the Tailwind utilities generated below
+   (bg-surface, bg-sidebar, text-fg, border-line, bg-accent ...), never raw hex. */
 :root {
-  --bg-primary: #FAFAFC;
-  --bg-secondary: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --border-primary: rgba(226, 232, 240, 0.6);
+  --c-surface: #ffffff;
+  --c-sidebar: #f7f7f8;
+  --c-panel: #ffffff;
+  --c-raised: #ffffff;
+  --c-hover: #f1f1f4;
+  --c-active: #e8e8ed;
+  --c-line: #e8e8ec;
+  --c-line-strong: #d4d4db;
+  --c-fg: #16171a;
+  --c-fg-muted: #5c6068;
+  --c-fg-subtle: #8b8f98;
+  --c-accent: #5b64d6;
+  --c-accent-hover: #4b54c4;
+  --c-accent-soft: rgba(91, 100, 214, 0.1);
+  --c-accent-fg: #ffffff;
+  --c-success: #1a8f5c;  --c-success-soft: rgba(26, 143, 92, 0.1);
+  --c-warning: #b7791f;  --c-warning-soft: rgba(183, 121, 31, 0.12);
+  --c-danger: #d13b3b;   --c-danger-soft: rgba(209, 59, 59, 0.1);
+  --c-shadow-pop: 0 8px 30px rgba(16, 17, 20, 0.12), 0 0 0 1px rgba(16, 17, 20, 0.06);
+  --c-shadow-sm: 0 1px 2px rgba(16, 17, 20, 0.06);
+
+  /* Legacy aliases so screens not yet migrated keep working */
+  --bg-primary: var(--c-surface);
+  --bg-secondary: var(--c-panel);
+  --text-primary: var(--c-fg);
+  --text-secondary: var(--c-fg-muted);
+  --border-primary: var(--c-line);
 }
 
 .dark {
-  --bg-primary: #09090b;
-  --bg-secondary: #18181b;
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --border-primary: rgba(39, 39, 42, 0.8);
+  --c-surface: #101113;
+  --c-sidebar: #151618;
+  --c-panel: #18191c;
+  --c-raised: #1e1f23;
+  --c-hover: #202226;
+  --c-active: #292b30;
+  --c-line: #26282c;
+  --c-line-strong: #34363c;
+  --c-fg: #ececef;
+  --c-fg-muted: #9a9ea8;
+  --c-fg-subtle: #70747d;
+  --c-accent: #7780ea;
+  --c-accent-hover: #8a92f0;
+  --c-accent-soft: rgba(119, 128, 234, 0.16);
+  --c-accent-fg: #0e0f14;
+  --c-success: #4cc38a;  --c-success-soft: rgba(76, 195, 138, 0.14);
+  --c-warning: #e5b25d;  --c-warning-soft: rgba(229, 178, 93, 0.14);
+  --c-danger: #f06b6b;   --c-danger-soft: rgba(240, 107, 107, 0.14);
+  --c-shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --c-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+  --color-surface: var(--c-surface);
+  --color-sidebar: var(--c-sidebar);
+  --color-panel: var(--c-panel);
+  --color-raised: var(--c-raised);
+  --color-hover: var(--c-hover);
+  --color-active: var(--c-active);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-fg: var(--c-fg);
+  --color-fg-muted: var(--c-fg-muted);
+  --color-fg-subtle: var(--c-fg-subtle);
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-fg: var(--c-accent-fg);
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-warning: var(--c-warning);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-soft: var(--c-danger-soft);
+  --shadow-pop: var(--c-shadow-pop);
+  --shadow-soft: var(--c-shadow-sm);
 }
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "Outfit", sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-tomorrow: "Tomorrow", sans-serif;
+  --font-tomorrow: "Inter", sans-serif;
 
   /* Premium border radiuses */
   --radius-xs: 4px;
@@ -47,8 +113,8 @@
 /* Base resets & custom scrollbars */
 @layer base {
   body {
-    @apply font-sans text-[15px] leading-relaxed antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply font-sans text-[14px] leading-normal antialiased;
+    font-feature-settings: "cv11", "ss01";
     background-color: var(--bg-primary);
     color: var(--text-primary);
   }
@@ -112,64 +178,24 @@
 }
 
 /* Markdown container custom styling for the note body editor & viewer */
-.markdown-body h1 {
-  @apply font-display text-[28px] font-bold tracking-tight text-slate-900 dark:text-slate-100 mt-6 mb-4;
-}
-
-.markdown-body h2 {
-  @apply font-display text-[22px] font-semibold tracking-tight text-slate-900 dark:text-slate-100 mt-5 mb-3;
-}
-
-.markdown-body h3 {
-  @apply font-display text-[18px] font-semibold tracking-tight text-slate-900 dark:text-slate-100 mt-4 mb-2;
-}
-
-.markdown-body p {
-  @apply text-[15px] text-slate-800 dark:text-slate-300 mb-4 leading-relaxed;
-}
-
-.markdown-body ul {
-  @apply list-disc list-inside space-y-1.5 mb-4 pl-4 text-slate-800 dark:text-slate-300;
-}
-
-.markdown-body ol {
-  @apply list-decimal list-inside space-y-1.5 mb-4 pl-4 text-slate-800 dark:text-slate-300;
-}
-
-.markdown-body blockquote {
-  @apply border-l-4 border-blue-500 bg-slate-100 dark:bg-slate-900/50 pl-4 py-2 pr-2 rounded-r-lg italic my-4 text-slate-700 dark:text-slate-300;
-}
-
-.markdown-body code {
-  @apply font-mono text-sm px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-pink-600 dark:text-pink-400 rounded;
-}
-
-.markdown-body pre {
-  @apply font-mono text-sm p-4 bg-slate-900 text-slate-100 rounded-xl overflow-x-auto my-4;
-}
-
-.markdown-body pre code {
-  background: transparent !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  border: none !important;
-}
-
-.markdown-body table {
-  @apply w-full border-collapse my-4 text-sm rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800;
-}
-
-.markdown-body th {
-  @apply bg-slate-100 dark:bg-slate-800/80 font-semibold p-2.5 text-left border-b border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200;
-}
-
-.markdown-body td {
-  @apply p-2.5 border-b border-slate-100 dark:border-slate-800/50 text-slate-700 dark:text-slate-300;
-}
-
-.markdown-body a {
-  @apply text-blue-500 hover:underline font-medium;
-}
+.markdown-body { color: var(--c-fg); }
+.markdown-body h1 { @apply text-[26px] font-semibold tracking-tight text-fg mt-7 mb-3 leading-tight; }
+.markdown-body h2 { @apply text-[20px] font-semibold tracking-tight text-fg mt-6 mb-2.5 leading-snug; }
+.markdown-body h3 { @apply text-[16px] font-semibold text-fg mt-5 mb-2; }
+.markdown-body p { @apply text-[15px] text-fg mb-3.5 leading-[1.7]; }
+.markdown-body ul { @apply list-disc space-y-1 mb-3.5 pl-6 text-fg; }
+.markdown-body ol { @apply list-decimal space-y-1 mb-3.5 pl-6 text-fg; }
+.markdown-body li { @apply text-[15px] leading-[1.65]; }
+.markdown-body blockquote { @apply border-l-2 border-line-strong pl-4 my-4 text-fg-muted; }
+.markdown-body hr { @apply border-line my-6; }
+.markdown-body code { @apply font-mono text-[13px] px-1.5 py-0.5 bg-hover text-fg rounded-md; }
+.markdown-body pre { @apply font-mono text-[13px] p-4 bg-sidebar text-fg rounded-lg overflow-x-auto my-4 border border-line; }
+.markdown-body pre code { background: transparent !important; padding: 0 !important; border-radius: 0 !important; border: none !important; color: inherit; }
+.markdown-body table { @apply w-full border-collapse my-4 text-[13px] rounded-lg overflow-hidden border border-line; }
+.markdown-body th { @apply bg-sidebar font-medium p-2.5 text-left border-b border-line text-fg; }
+.markdown-body td { @apply p-2.5 border-b border-line text-fg; }
+.markdown-body a { @apply text-accent hover:underline underline-offset-2; }
+.markdown-body img { @apply rounded-lg max-w-full; }
 
 /* Skeleton loader animations */
 @keyframes shimmer {

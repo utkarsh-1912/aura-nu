@@ -1,29 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
-  X,
-  User,
-  Layout,
-  Sliders,
-  Keyboard,
-  HardDrive,
-  Bell,
-  Sparkles,
-  Lock,
-  Globe,
-  Sun,
-  Moon,
-  Check,
-  CreditCard,
-  Key,
-  Shield,
-  Activity,
-  Plus,
-  Trash2,
-  RefreshCw,
-  Link,
-  ChevronRight
+  Layout, Sliders, Keyboard, HardDrive, Bell, Sparkles, Globe, Sun, Moon, Monitor,
+  CreditCard, Key, Shield, Plus, Trash2, RefreshCw, Link, Check, AlertCircle,
 } from "lucide-react";
 import { Settings } from "../types";
+import { Dialog, Button, IconButton, Input, Field, Select, Switch, Segmented, Badge, Kbd, EmptyState, cn } from "../ui";
+import { SettingsGroup, SettingRow, InfoBanner, DataTable } from "./settings/parts";
+import { FileUp } from "lucide-react";
+import { FLAG_TIPTAP_EDITOR, useFlag } from "../features/flags";
+import ImportPanel from "../features/import/ImportPanel";
+import type { ImportPlan } from "../features/import/plan";
+import VaultSettings from "../features/desktop/VaultSettings";
+import type { Folder } from "../types";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -36,70 +24,93 @@ interface SettingsModalProps {
   notes?: any[];
   onForceSync?: () => Promise<void>;
   onClearCache?: () => Promise<void>;
+  /** Enables Settings > Import. */
+  importContext?: { workspaceId: string; folders: Folder[]; onImport: (plan: ImportPlan) => void };
 }
 
 type TabType =
-  | "appearance"
-  | "editor"
-  | "language"
-  | "notifications"
-  | "storage"
-  | "privacy"
-  | "ai"
-  | "integrations"
-  | "billing"
-  | "apikeys"
-  | "shortcuts";
+  | "appearance" | "editor" | "language" | "notifications" | "storage"
+  | "privacy" | "ai" | "integrations" | "billing" | "apikeys" | "shortcuts" | "import";
+
+const NAV: { group: string; items: { id: TabType; label: string; icon: React.ComponentType<{ size?: number }> }[] }[] = [
+  { group: "Preferences", items: [
+    { id: "language", label: "General", icon: Globe },
+    { id: "appearance", label: "Appearance", icon: Layout },
+    { id: "editor", label: "Editor", icon: Sliders },
+    { id: "notifications", label: "Notifications", icon: Bell },
+    { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
+  ] },
+  { group: "Intelligence", items: [{ id: "ai", label: "AI", icon: Sparkles }] },
+  { group: "Data", items: [
+    { id: "storage", label: "Sync & storage", icon: HardDrive },
+    { id: "import", label: "Import", icon: FileUp },
+    { id: "integrations", label: "Connected accounts", icon: Link },
+    { id: "apikeys", label: "API keys", icon: Key },
+  ] },
+  { group: "Account", items: [
+    { id: "privacy", label: "Privacy & security", icon: Shield },
+    { id: "billing", label: "Billing & plan", icon: CreditCard },
+  ] },
+];
+const ALL_ITEMS = NAV.flatMap((g) => g.items);
+
+const FONT_ITEMS = [
+  { id: "sm" as const, label: "Small" },
+  { id: "base" as const, label: "Normal" },
+  { id: "lg" as const, label: "Large" },
+  { id: "xl" as const, label: "XL" },
+];
+
+const SHORTCUTS: [string, string[]][] = [
+  ["Search / action palette", ["Ctrl", "K"]],
+  ["New note", ["Alt", "N"]],
+  ["Toggle settings", ["Alt", "S"]],
+  ["Toggle focus mode", ["Alt", "F"]],
+  ["Duplicate note", ["Alt", "D"]],
+  ["Archive note", ["Alt", "A"]],
+  ["Trash note", ["Alt", "T"]],
+  ["Lock / unlock note", ["Alt", "L"]],
+  ["Slash commands", ["/"]],
+];
+
+function usePersisted(key: string, initial: boolean) {
+  const [v, setV] = useState<boolean>(() => {
+    const saved = localStorage.getItem(key);
+    return saved !== null ? saved === "true" : initial;
+  });
+  const set = (next: boolean) => {
+    setV(next);
+    localStorage.setItem(key, String(next));
+  };
+  return [v, set] as const;
+}
 
 export default function SettingsModal({
-  isOpen,
-  onClose,
-  settings,
-  onUpdateSettings,
-  theme,
-  setTheme,
-  currentUserEmail,
-  notes = [],
-  onForceSync,
-  onClearCache,
+  isOpen, onClose, settings, onUpdateSettings, theme, setTheme, currentUserEmail, notes = [], onForceSync, onClearCache, importContext,
 }: SettingsModalProps) {
+  const [tiptapOn, setTiptapOn] = useFlag(FLAG_TIPTAP_EDITOR);
   const [activeTab, setActiveTab] = useState<TabType>("appearance");
 
-  // Local state extensions for all the new features
-  const [language, setLanguage] = useState(() => {
-    return localStorage.getItem(`aura-language-${currentUserEmail}`) || "en";
-  });
-  const [soundAlerts, setSoundAlerts] = useState(() => {
-    const saved = localStorage.getItem(`aura-soundAlerts-${currentUserEmail}`);
-    return saved !== null ? saved === "true" : true;
-  });
-  const [desktopNotif, setDesktopNotif] = useState(() => {
-    const saved = localStorage.getItem(`aura-desktopNotif-${currentUserEmail}`);
-    return saved !== null ? saved === "true" : true;
-  });
-  const [newsletterAlerts, setNewsletterAlerts] = useState(() => {
-    const saved = localStorage.getItem(`aura-newsletterAlerts-${currentUserEmail}`);
-    return saved === "true";
-  });
-  
+  const [language, setLanguage] = useState(() => localStorage.getItem(`aura-language-${currentUserEmail}`) || "en");
+  const [soundAlerts, setSoundAlerts] = usePersisted(`aura-soundAlerts-${currentUserEmail}`, true);
+  const [desktopNotif, setDesktopNotif] = usePersisted(`aura-desktopNotif-${currentUserEmail}`, true);
+  const [newsletterAlerts, setNewsletterAlerts] = usePersisted(`aura-newsletterAlerts-${currentUserEmail}`, false);
+  const [twoFactorActive, setTwoFactorActive] = usePersisted(`aura-twoFactorActive-${currentUserEmail}`, false);
+
   const [aiModel, setAiModel] = useState(settings.aiModel || "gemini-3.5-flash");
   const [aiTemperature, setAiTemperature] = useState(() => {
     const saved = localStorage.getItem(`aura-aiTemperature-${currentUserEmail}`);
     return saved !== null ? parseFloat(saved) : 0.7;
   });
-  
-  const [twoFactorActive, setTwoFactorActive] = useState(() => {
-    const saved = localStorage.getItem(`aura-twoFactorActive-${currentUserEmail}`);
-    return saved === "true";
-  });
-  const [isSyncingNow, setIsSyncingNow] = useState(false);
 
-  // API key generator state
+  const [isSyncingNow, setIsSyncingNow] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{ tone: "info" | "warning" | "danger"; text: string } | null>(null);
+
   const [apiTokens, setApiTokens] = useState<{ id: string; name: string; key: string; created: string }[]>(() => {
     const saved = localStorage.getItem(`aura-api-tokens-${currentUserEmail}`);
-    return saved ? JSON.parse(saved) : [
-      { id: "tok-1", name: "Production Retries", key: "aura_live_21h17sXy...uN89", created: "2026-06-12" },
-    ];
+    return saved ? JSON.parse(saved) : [{ id: "tok-1", name: "Production Retries", key: "aura_live_21h17sXy...uN89", created: "2026-06-12" }];
   });
   const [newTokenName, setNewTokenName] = useState("");
 
@@ -107,23 +118,10 @@ export default function SettingsModal({
     localStorage.setItem(`aura-api-tokens-${currentUserEmail}`, JSON.stringify(apiTokens));
   }, [apiTokens, currentUserEmail]);
 
-  const activeTheme = React.useMemo<"light" | "dark">(() => {
-    if (theme === "system") {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      return prefersDark ? "dark" : "light";
-    }
-    return theme;
-  }, [theme]);
+  const storageUsed = useMemo(() => (notes.reduce((acc, note) => acc + (note.content?.length || 0), 0) / 1024).toFixed(2), [notes]);
+  const storagePercentage = useMemo(() => Math.min((parseFloat(storageUsed) / 5120) * 100, 100).toFixed(1), [storageUsed]);
 
-  const storageUsed = React.useMemo(() => {
-    return (notes.reduce((acc, note) => acc + (note.content?.length || 0), 0) / 1024).toFixed(2); // KB
-  }, [notes]);
-
-  const storagePercentage = React.useMemo(() => {
-    return Math.min((parseFloat(storageUsed) / 5120) * 100, 100).toFixed(1);
-  }, [storageUsed]);
-
-  const currentBrowser = React.useMemo(() => {
+  const currentBrowser = useMemo(() => {
     const ua = navigator.userAgent;
     if (ua.includes("Chrome") && !ua.includes("Chromium") && !ua.includes("Edg")) return "Chrome";
     if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari";
@@ -131,8 +129,7 @@ export default function SettingsModal({
     if (ua.includes("Edg")) return "Edge";
     return "Web Browser";
   }, []);
-
-  const currentOS = React.useMemo(() => {
+  const currentOS = useMemo(() => {
     const ua = navigator.userAgent;
     if (ua.includes("Windows")) return "Windows";
     if (ua.includes("Macintosh") || ua.includes("Mac OS X")) return "macOS";
@@ -144,20 +141,15 @@ export default function SettingsModal({
 
   const [integrations, setIntegrations] = useState<{ [key: string]: boolean }>(() => {
     const saved = localStorage.getItem(`aura-integrations-${currentUserEmail}`);
-    return saved ? JSON.parse(saved) : {
-      "Google Drive Backup": true,
-      "Slack Communications": false,
-      "GitHub Repository Sync": false
-    };
+    return saved ? JSON.parse(saved) : { "Google Drive Backup": true, "Slack Communications": false, "GitHub Repository Sync": false };
   });
-
   const toggleIntegration = (name: string) => {
     const updated = { ...integrations, [name]: !integrations[name] };
     setIntegrations(updated);
     localStorage.setItem(`aura-integrations-${currentUserEmail}`, JSON.stringify(updated));
   };
 
-  const nextRenewalDate = React.useMemo(() => {
+  const nextRenewalDate = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 1);
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -165,46 +157,20 @@ export default function SettingsModal({
 
   if (!isOpen) return null;
 
-  const tabs = [
-    { id: "appearance", label: "Appearance", icon: Layout },
-    { id: "editor", label: "Editor Preferences", icon: Sliders },
-    { id: "language", label: "Language & Regional", icon: Globe },
-    { id: "notifications", label: "Notifications", icon: Bell },
-    { id: "storage", label: "Storage & Sync", icon: HardDrive },
-    { id: "privacy", label: "Privacy & Security", icon: Shield },
-    { id: "ai", label: "AI Preferences", icon: Sparkles },
-    { id: "integrations", label: "Connected Accounts", icon: Link },
-    { id: "billing", label: "Billing & Plans", icon: CreditCard },
-    { id: "apikeys", label: "Developer API Keys", icon: Key },
-    { id: "shortcuts", label: "Keyboard Shortcuts", icon: Keyboard },
-  ] as const;
-
-  const toggleTheme = (newTheme: "light" | "dark" | "system") => {
-    setTheme(newTheme);
-    onUpdateSettings({ ...settings, theme: newTheme });
-  };
-
-  const handleToggleAutoSave = () => {
-    onUpdateSettings({ ...settings, autoSave: !settings.autoSave });
-  };
-
-  const handleToggleShortcuts = () => {
-    onUpdateSettings({ ...settings, shortcutsEnabled: !settings.shortcutsEnabled });
-  };
-
-  const handleChangeFontSize = (size: Settings["fontSize"]) => {
-    onUpdateSettings({ ...settings, fontSize: size });
+  const toggleTheme = (t: "light" | "dark" | "system") => {
+    setTheme(t);
+    onUpdateSettings({ ...settings, theme: t });
   };
 
   const handleForceSync = async () => {
     setIsSyncingNow(true);
+    setSyncStatus(null);
     try {
-      if (onForceSync) {
-        await onForceSync();
-      }
-      alert("Aura database volumes synchronized with cloud nodes successfully.");
-    } catch (e) {
-      alert("Synchronization failed. Please check your internet connection.");
+      if (onForceSync) await onForceSync();
+      setLastSync(new Date());
+      setSyncStatus({ tone: "info", text: "Sync complete. Your notes are up to date with the server." });
+    } catch {
+      setSyncStatus({ tone: "danger", text: "Sync failed. Check your connection and try again." });
     } finally {
       setIsSyncingNow(false);
     }
@@ -212,13 +178,14 @@ export default function SettingsModal({
 
   const handleClearCache = async () => {
     setIsSyncingNow(true);
+    setSyncStatus(null);
+    setConfirmClear(false);
     try {
-      if (onClearCache) {
-        await onClearCache();
-      }
-      alert("Offline Cache storage wiped. Resynchronized successfully from database.");
-    } catch (e) {
-      alert("Failed to clear local cache cleanly.");
+      if (onClearCache) await onClearCache();
+      setLastSync(new Date());
+      setSyncStatus({ tone: "info", text: "Offline cache cleared and re-downloaded from the server." });
+    } catch {
+      setSyncStatus({ tone: "danger", text: "Could not clear the local cache. Try again." });
     } finally {
       setIsSyncingNow(false);
     }
@@ -228,425 +195,245 @@ export default function SettingsModal({
     e.preventDefault();
     if (!newTokenName.trim()) return;
     const keyVal = `aura_live_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
-    const newTok = {
-      id: `tok-${Date.now()}`,
-      name: newTokenName.trim(),
-      key: `${keyVal.substring(0, 14)}...${keyVal.substring(keyVal.length - 4)}`,
-      created: new Date().toISOString().split("T")[0],
-    };
-    setApiTokens([...apiTokens, newTok]);
+    setApiTokens([
+      ...apiTokens,
+      {
+        id: `tok-${Date.now()}`,
+        name: newTokenName.trim(),
+        key: `${keyVal.substring(0, 14)}...${keyVal.substring(keyVal.length - 4)}`,
+        created: new Date().toISOString().split("T")[0],
+      },
+    ]);
     setNewTokenName("");
   };
+  const handleDeleteToken = (id: string) => setApiTokens(apiTokens.filter((t) => t.id !== id));
 
-  const handleDeleteToken = (id: string) => {
-    setApiTokens(apiTokens.filter((t) => t.id !== id));
-  };
+  const activeItem = ALL_ITEMS.find((t) => t.id === activeTab)!;
 
   return (
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none cursor-pointer animate-modal-backdrop"
-    >
-      <div
-        id="settings-modal"
-        className={`w-full max-w-3xl h-[540px] rounded-3xl shadow-2xl flex flex-col md:flex-row border overflow-hidden transition-all cursor-default animate-modal-content ${
-          activeTheme === "dark"
-            ? "bg-[#141416] border-zinc-800 text-zinc-100 shadow-black/80"
-            : "bg-white border-slate-200 text-slate-800"
-        }`}
-      >
-        {/* Left tabs menu - collapses to a horizontal bar on mobile screens */}
-        <div className={`w-full md:w-56 border-b md:border-b-0 md:border-r p-4 flex flex-col gap-1 overflow-x-auto md:overflow-y-auto shrink-0 ${
-          activeTheme === "dark" ? "bg-zinc-950/20 border-zinc-800" : "bg-[#fafafc] border-slate-200"
-        }`}>
-          <div className="hidden md:block text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest px-2 mb-3">
-            Aura Settings
-          </div>
-          <div className="flex md:flex-col gap-1 w-full overflow-x-auto scrollbar-none pr-2">
-            {tabs.map((tab) => {
-              const isTabActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                    isTabActive
-                      ? activeTheme === "dark"
-                        ? "bg-zinc-800 text-white"
-                        : "bg-white text-slate-950 shadow-sm border border-slate-200/50"
-                      : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white"
-                  } cursor-pointer`}
-                >
-                  <tab.icon size={13.5} className={isTabActive ? "text-blue-500" : "opacity-60"} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="hidden md:block mt-auto px-2 text-[9px] text-slate-400 dark:text-zinc-500 font-mono">
-            Aura Suite v1.2.5 • Verified
-          </div>
-        </div>
-
-        {/* Right content view area */}
-        <div className="flex-grow flex flex-col min-w-0">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-850 flex items-center justify-between">
-            <h3 className="font-display font-extrabold text-sm text-slate-900 dark:text-white uppercase tracking-wider">
-              {tabs.find((t) => t.id === activeTab)?.label}
-            </h3>
-            <button
-              id="settings-close-btn"
-              onClick={onClose}
-              className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl text-slate-400 hover:text-slate-800 dark:text-zinc-500 dark:hover:text-zinc-200 transition-colors cursor-pointer"
-            >
-              <X size={15} />
-            </button>
-          </div>
-
-          {/* Body with vertical scroll */}
-          <div className="flex-grow overflow-y-auto p-6 text-xs leading-relaxed">
-                       {/* 1. Appearance Tab */}
-            {activeTab === "appearance" && (
-              <div className="flex flex-col gap-5">
-                <div>
-                  <h4 className="font-semibold text-sm text-slate-900 dark:text-zinc-100 mb-1">Color Palette Theme</h4>
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500">Pick the interface shade matching your current ambient setup.</p>
-                  
-                  <div className="grid grid-cols-3 gap-3 mt-3">
+    <Dialog open={isOpen} onClose={onClose} title="Settings" size="xl" className="sm:h-[600px]">
+      <div id="settings-modal-overlay" className="flex min-h-[420px] flex-col gap-4 sm:h-full sm:min-h-0 sm:flex-row sm:gap-6">
+        {/* Nav: top list on phones, left column from sm */}
+        <nav aria-label="Settings sections" className="shrink-0 sm:w-48 sm:overflow-y-auto sm:border-r sm:border-line sm:pr-3">
+          <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-col sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0">
+            {NAV.map((g) => (
+              <div key={g.group} className="flex gap-1 sm:flex-col">
+                <p className="hidden px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-fg-subtle sm:block">{g.group}</p>
+                {g.items.map((t) => {
+                  const on = t.id === activeTab;
+                  return (
                     <button
-                      onClick={() => toggleTheme("light")}
-                      className={`p-3 rounded-xl border flex items-center gap-2 justify-center transition-all ${
-                        theme === "light"
-                          ? "border-blue-500 bg-blue-500/[0.02] text-blue-500"
-                          : "border-slate-200 hover:border-slate-300 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
-                      } cursor-pointer`}
+                      key={t.id}
+                      onClick={() => setActiveTab(t.id)}
+                      aria-current={on ? "page" : undefined}
+                      className={cn(
+                        "flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-colors sm:h-8",
+                        "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+                        on ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-hover hover:text-fg",
+                      )}
                     >
-                      <Sun size={14} />
-                      <span className="font-semibold text-xs">Light</span>
-                      {theme === "light" && <Check size={10} className="stroke-[3]" />}
+                      <t.icon size={14} />
+                      {t.label}
                     </button>
-
-                    <button
-                      onClick={() => toggleTheme("dark")}
-                      className={`p-3 rounded-xl border flex items-center gap-2 justify-center transition-all ${
-                        theme === "dark"
-                          ? "border-blue-500 bg-blue-500/[0.02] text-indigo-400"
-                          : "border-slate-200 hover:border-slate-300 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
-                      } cursor-pointer`}
-                    >
-                      <Moon size={14} />
-                      <span className="font-semibold text-xs">Dark</span>
-                      {theme === "dark" && <Check size={10} className="stroke-[3]" />}
-                    </button>
-
-                    <button
-                      onClick={() => toggleTheme("system")}
-                      className={`p-3 rounded-xl border flex items-center gap-2 justify-center transition-all ${
-                        theme === "system"
-                          ? "border-blue-500 bg-blue-500/[0.02] text-purple-500"
-                          : "border-slate-200 hover:border-slate-300 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
-                      } cursor-pointer`}
-                    >
-                      <Sparkles size={14} />
-                      <span className="font-semibold text-xs">System</span>
-                      {theme === "system" && <Check size={10} className="stroke-[3]" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/80 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-zinc-100">Synchronize System Theme</h4>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Adapt visual modes with system level settings automatically.</p>
-                  </div>
-                  <div className={`w-8 h-4.5 rounded-full p-0.5 cursor-pointer ${theme === "system" ? "bg-blue-500" : "bg-slate-200 dark:bg-zinc-800"}`} onClick={() => toggleTheme(theme === "system" ? "light" : "system")}>
-                    <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-xs transition-transform transform ${theme === "system" ? "translate-x-3.5" : "translate-x-0"}`}></div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            )}
+            ))}
+          </div>
+        </nav>
 
-            {/* 2. Editor Preferences Tab */}
-            {activeTab === "editor" && (
-              <div className="flex flex-col gap-5">
-                <div>
-                  <h4 className="font-semibold text-sm text-slate-900 dark:text-zinc-100 mb-1">Editor Font Sizing</h4>
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-3">Adjust scale preferences for optimal legibility.</p>
-                  
-                  <div className="flex gap-2">
-                    {(["sm", "base", "lg", "xl"] as const).map((sz) => (
-                      <button
-                        key={sz}
-                        onClick={() => handleChangeFontSize(sz)}
-                        className={`flex-grow py-2 rounded-xl border text-xs capitalize transition-all ${
-                          settings.fontSize === sz
-                            ? "bg-blue-500 text-white border-blue-500 font-semibold"
-                            : "border-slate-200 dark:border-zinc-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-zinc-900"
-                        } cursor-pointer`}
-                      >
-                        {sz === "base" ? "Normal" : sz}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        <div className="min-w-0 flex-1 sm:overflow-y-auto sm:pr-1" role="region" aria-label={activeItem.label}>
+          <h3 className="mb-3 text-[16px] font-semibold text-fg">{activeItem.label}</h3>
 
-                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/80 flex flex-col gap-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h4 className="font-semibold text-slate-900 dark:text-zinc-100">Auto Save to Cloud</h4>
-                      <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Sync adjustments automatically to the container server-side volume.</p>
-                    </div>
-                    <button
-                      onClick={handleToggleAutoSave}
-                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
-                        settings.autoSave ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
-                      }`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
-                        settings.autoSave ? "translate-x-4" : "translate-x-0"
-                      }`}></div>
-                    </button>
-                  </div>
+          {activeTab === "appearance" && (
+            <SettingsGroup>
+              <SettingRow title="Theme" hint="Choose a light or dark interface, or follow your device.">
+                <Segmented
+                  value={theme}
+                  onChange={toggleTheme}
+                  items={[
+                    { id: "light", label: "Light", icon: <Sun size={13} /> },
+                    { id: "dark", label: "Dark", icon: <Moon size={13} /> },
+                    { id: "system", label: "System", icon: <Monitor size={13} /> },
+                  ]}
+                />
+              </SettingRow>
+              <SettingRow title="Match system theme" hint="Switch automatically with your operating system.">
+                <Switch label="Match system theme" checked={theme === "system"} onChange={(v) => toggleTheme(v ? "system" : "light")} />
+              </SettingRow>
+            </SettingsGroup>
+          )}
 
-                  {/* Line Wrapping Toggle */}
-                  <div className="flex justify-between items-center pt-3 border-t border-slate-100/50 dark:border-zinc-800/40">
-                    <div>
-                      <h4 className="font-semibold text-xs text-slate-900 dark:text-zinc-100">Enable Line Wrapping</h4>
-                      <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Wrap lines to the viewport width instead of horizontal overflow scrolling.</p>
-                    </div>
-                    <button
-                      onClick={() => onUpdateSettings({ ...settings, lineWrapping: !settings.lineWrapping })}
-                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
-                        settings.lineWrapping ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
-                      }`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
-                        settings.lineWrapping ? "translate-x-4" : "translate-x-0"
-                      }`}></div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+          {activeTab === "editor" && (
+            <SettingsGroup>
+              <SettingRow title="Font size" hint="Scale the editor text for comfortable reading.">
+                <Segmented value={settings.fontSize} onChange={(sz) => onUpdateSettings({ ...settings, fontSize: sz })} items={FONT_ITEMS} />
+              </SettingRow>
+              <SettingRow title="Auto-save to cloud" hint="Sync edits to the server as you type.">
+                <Switch label="Auto-save to cloud" checked={!!settings.autoSave} onChange={() => onUpdateSettings({ ...settings, autoSave: !settings.autoSave })} />
+              </SettingRow>
+              <SettingRow title="New editor (beta)" hint="Rich-text editor with [[wikilinks]], task lists and tables. Notes stay Markdown. Off by default.">
+                <Switch label="New editor (beta)" checked={tiptapOn} onChange={setTiptapOn} />
+              </SettingRow>
+              <SettingRow title="Line wrapping" hint="Wrap long lines instead of scrolling horizontally.">
+                <Switch label="Line wrapping" checked={!!settings.lineWrapping} onChange={() => onUpdateSettings({ ...settings, lineWrapping: !settings.lineWrapping })} />
+              </SettingRow>
+            </SettingsGroup>
+          )}
 
-            {/* 3. Language & Regional Settings */}
-            {activeTab === "language" && (
-              <div className="flex flex-col gap-4">
-                <div>
-                  <h4 className="font-semibold text-sm text-slate-900 dark:text-zinc-100 mb-1">Language Workspace Preferences</h4>
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-3">Modify system translations, keyboard shortcuts, and character sets.</p>
-                  
-                  <select
+          {activeTab === "import" && (
+            importContext ? <ImportPanel workspaceId={importContext.workspaceId} folders={importContext.folders} onImport={importContext.onImport} /> : <p className="text-[13px] text-fg-muted">Import is not available here.</p>
+          )}
+
+          {activeTab === "language" && (
+            <SettingsGroup>
+              <Field label="Language" hint="AI responses are translated to this language.">
+                {(p) => (
+                  <Select
+                    {...p}
                     value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl border outline-none text-xs font-semibold ${
-                      activeTheme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
-                    }`}
+                    onChange={(e) => {
+                      setLanguage(e.target.value);
+                      localStorage.setItem(`aura-language-${currentUserEmail}`, e.target.value);
+                    }}
                   >
                     <option value="en">English (United States)</option>
-                    <option value="es">Español (Castellano)</option>
-                    <option value="de">Deutsch (Deutschland)</option>
-                    <option value="ja">日本語 (Japan)</option>
-                    <option value="hi">हिन्दी (India)</option>
-                  </select>
-                </div>
+                    <option value="es">Español</option>
+                    <option value="de">Deutsch</option>
+                    <option value="ja">日本語</option>
+                    <option value="hi">हिन्दी</option>
+                  </Select>
+                )}
+              </Field>
+            </SettingsGroup>
+          )}
 
-                <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl leading-relaxed">
-                  <span className="font-semibold text-blue-500 block mb-1">AI Translation Grounding:</span>
-                  Changing Workspace Language will instruct Aura Gemini commands to translate response structures into your native regional language format automatically.
-                </div>
-              </div>
-            )}
+          {activeTab === "notifications" && (
+            <SettingsGroup>
+              <SettingRow title="Sound alerts" hint="Play a soft tone on sync success or timer expiry.">
+                <Switch label="Sound alerts" checked={soundAlerts} onChange={setSoundAlerts} />
+              </SettingRow>
+              <SettingRow title="Desktop notifications" hint="Show a banner in your operating system.">
+                <Switch label="Desktop notifications" checked={desktopNotif} onChange={setDesktopNotif} />
+              </SettingRow>
+              <SettingRow title="Product newsletter" hint="Weekly tips on workflows.">
+                <Switch label="Product newsletter" checked={newsletterAlerts} onChange={setNewsletterAlerts} />
+              </SettingRow>
+            </SettingsGroup>
+          )}
 
-            {/* 4. Notifications */}
-            {activeTab === "notifications" && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-zinc-100">Sound Audio Alerts</h4>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500">Play delicate ambient microtones on sync success or timer expirations.</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const next = !soundAlerts;
-                      setSoundAlerts(next);
-                      localStorage.setItem(`aura-soundAlerts-${currentUserEmail}`, String(next));
-                    }}
-                    className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
-                      soundAlerts ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
-                    }`}
+          {activeTab === "storage" && <VaultSettings />}
+          {activeTab === "storage" && (
+            <div className="space-y-6">
+              <SettingsGroup title="Status" description="Notes sync to the server; a copy is kept offline in this browser.">
+                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {[
+                    ["Last sync", lastSync ? lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "None this session"],
+                    ["Notes", String(notes.length)],
+                    ["Auto-save", settings.autoSave ? "On" : "Off"],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-lg border border-line bg-panel px-3 py-2.5">
+                      <dt className="text-[12px] text-fg-muted">{k}</dt>
+                      <dd className="mt-0.5 text-[14px] font-medium text-fg">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div>
+                  <div
+                    role="progressbar"
+                    aria-label="Storage used"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={parseFloat(storagePercentage)}
+                    className="h-1.5 w-full overflow-hidden rounded-full bg-hover"
                   >
-                    <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
-                      soundAlerts ? "translate-x-4" : "translate-x-0"
-                    }`}></div>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-zinc-100">Desktop Push Notifications</h4>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500">Show notification banner on your primary operating system window.</p>
+                    <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${storagePercentage}%` }} />
                   </div>
-                  <button
-                    onClick={() => {
-                      const next = !desktopNotif;
-                      setDesktopNotif(next);
-                      localStorage.setItem(`aura-desktopNotif-${currentUserEmail}`, String(next));
-                    }}
-                    className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
-                      desktopNotif ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
-                    }`}
-                  >
-                    <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
-                      desktopNotif ? "translate-x-4" : "translate-x-0"
-                    }`}></div>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-zinc-100">Telemetry Newsletter</h4>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500">Receive weekly emails on high productivity workflows or strategy blueprints.</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const next = !newsletterAlerts;
-                      setNewsletterAlerts(next);
-                      localStorage.setItem(`aura-newsletterAlerts-${currentUserEmail}`, String(next));
-                    }}
-                    className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
-                      newsletterAlerts ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
-                    }`}
-                  >
-                    <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
-                      newsletterAlerts ? "translate-x-4" : "translate-x-0"
-                    }`}></div>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 5. Storage & Cloud Sync */}
-            {activeTab === "storage" && (
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-col gap-2">
-                  <h4 className="font-semibold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
-                    <HardDrive size={13} />
-                    Volume Telemetry (Sync Center)
-                  </h4>
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500">Notes are synchronized back to the Cloud Run Express storage databases.</p>
-                   <div className="w-full h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${storagePercentage}%` }}></div>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                    <span>Current usage: ~{storageUsed} KB</span>
-                    <span>Total free allotment: 5.0 MB</span>
+                  <div className="mt-1.5 flex justify-between text-[12px] text-fg-muted">
+                    <span>~{storageUsed} KB used</span>
+                    <span>5.0 MB allotment</span>
                   </div>
                 </div>
+              </SettingsGroup>
 
-                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 flex gap-2">
-                  <button
-                    onClick={handleForceSync}
-                    disabled={isSyncingNow}
-                    className="flex-grow py-2.5 bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer active:scale-[0.98]"
-                  >
-                    <RefreshCw size={12} className={isSyncingNow ? "animate-spin" : ""} />
-                    <span>{isSyncingNow ? "Re-syncing..." : "Force Database Cloud Re-Sync"}</span>
-                  </button>
-
-                  <button
-                    onClick={handleClearCache}
-                    disabled={isSyncingNow}
-                    className="px-4 py-2.5 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 font-semibold rounded-xl text-xs cursor-pointer disabled:opacity-50"
-                  >
-                    Clear Cache
-                  </button>
+              {syncStatus && (
+                <div role={syncStatus.tone === "danger" ? "alert" : "status"}>
+                  <InfoBanner tone={syncStatus.tone}>
+                    <span className="inline-flex items-center gap-1.5">
+                      {syncStatus.tone === "danger" ? <AlertCircle size={13} className="text-danger" /> : <Check size={13} className="text-success" />}
+                      {syncStatus.text}
+                    </span>
+                  </InfoBanner>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 6. Privacy & Security */}
-            {activeTab === "privacy" && (
-              <div className="flex flex-col gap-5">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-semibold text-slate-900 dark:text-zinc-100">Multi-Factor Authentication (MFA)</h4>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Prompt for a 6-digit PIN on authentication to secure note logs.</p>
+              <SettingsGroup title="Actions">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" loading={isSyncingNow} onClick={handleForceSync} leadingIcon={<RefreshCw size={13} />}>
+                    {isSyncingNow ? "Syncing..." : "Force sync"}
+                  </Button>
+                  <Button variant="secondary" disabled={isSyncingNow} onClick={() => setConfirmClear(true)}>
+                    Clear offline cache
+                  </Button>
+                </div>
+                {confirmClear && (
+                  <div role="alertdialog" aria-label="Confirm clear cache" className="rounded-lg border border-line bg-danger-soft p-3">
+                    <p className="text-[13px] font-medium text-fg">Clear the offline cache?</p>
+                    <p className="mt-0.5 text-[12px] text-fg-muted">
+                      Local copies of {notes.length} notes are removed and downloaded again from the server. Unsynced changes may be lost.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button variant="danger" size="sm" onClick={handleClearCache}>Clear cache</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmClear(false)} data-autofocus>Cancel</Button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      const next = !twoFactorActive;
-                      setTwoFactorActive(next);
-                      localStorage.setItem(`aura-twoFactorActive-${currentUserEmail}`, String(next));
-                    }}
-                    className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${
-                      twoFactorActive ? "bg-blue-500" : "bg-slate-300 dark:bg-zinc-700"
-                    }`}
-                  >
-                    <div className={`w-4 h-4 bg-white rounded-full transition-transform transform ${
-                      twoFactorActive ? "translate-x-4" : "translate-x-0"
-                    }`}></div>
-                  </button>
-                </div>
+                )}
+              </SettingsGroup>
+            </div>
+          )}
 
-                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/80">
-                  <h4 className="font-semibold text-slate-900 dark:text-zinc-100 mb-2">Active Sessions (Telemetry logs)</h4>
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden text-[10px] font-mono">
-                    <table className="w-full text-left">
-                      <tr className="bg-slate-50 dark:bg-zinc-900 text-slate-400 border-b border-slate-100 dark:border-zinc-800">
-                        <th className="p-2">Device / Platform</th>
-                        <th className="p-2">IP Address</th>
-                        <th className="p-2">Status</th>
-                      </tr>
-                      <tr className="hover:bg-slate-50/20 text-slate-600 dark:text-zinc-300">
-                        <td className="p-2 font-sans font-medium">{currentBrowser} Browser ({currentOS})</td>
-                        <td className="p-2">127.0.0.1 (Current)</td>
-                        <td className="p-2 text-emerald-500 font-bold">Active Now</td>
-                      </tr>
-                      <tr className="hover:bg-slate-50/20 text-slate-400">
-                        <td className="p-2 font-sans">iPhone 15 Mobile Client</td>
-                        <td className="p-2">124.90.11.45</td>
-                        <td className="p-2">2 hours ago</td>
-                      </tr>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
+          {activeTab === "privacy" && (
+            <div className="space-y-6">
+              <SettingsGroup>
+                <SettingRow title="Two-factor authentication" hint="Require a 6-digit code when signing in.">
+                  <Switch label="Two-factor authentication" checked={twoFactorActive} onChange={setTwoFactorActive} />
+                </SettingRow>
+              </SettingsGroup>
+              <SettingsGroup title="Active sessions">
+                <DataTable
+                  head={["Device", "IP address", "Status"]}
+                  rows={[
+                    [`${currentBrowser} (${currentOS})`, "127.0.0.1", <Badge key="a" tone="success">Active now</Badge>],
+                    ["iPhone 15 mobile client", "124.90.11.45", <span key="b" className="text-fg-muted">2 hours ago</span>],
+                  ]}
+                />
+              </SettingsGroup>
+            </div>
+          )}
 
-            {/* 7. AI Preferences */}
-            {activeTab === "ai" && (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Generative Model Engine</label>
-                  <select
+          {activeTab === "ai" && (
+            <SettingsGroup>
+              <Field label="Model" hint="Used for summaries, rewrites and agent runs.">
+                {(p) => (
+                  <Select
+                    {...p}
                     value={aiModel}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      setAiModel(val);
-                      onUpdateSettings({ ...settings, aiModel: val });
+                      setAiModel(e.target.value);
+                      onUpdateSettings({ ...settings, aiModel: e.target.value });
                     }}
-                    className={`w-full px-3 py-2 rounded-xl border outline-none text-xs font-semibold ${
-                      activeTheme === "dark" ? "bg-zinc-950 border-zinc-800 text-zinc-300" : "bg-slate-50 border-slate-200 text-slate-700"
-                    }`}
                   >
-                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Supercharged speed & actions)</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep logical formulations)</option>
-                    <option value="claude-3.5-sonnet">Claude 3.5 Sonnet (Extended creative drafting)</option>
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="font-semibold text-slate-900 dark:text-zinc-100">AI Temperature Accent: {aiTemperature}</span>
-                    <span className="text-slate-400 dark:text-zinc-500 font-mono">{aiTemperature < 0.4 ? "Precise/Strategic" : aiTemperature > 0.8 ? "Highly Creative" : "Balanced"}</span>
-                  </div>
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (fast)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (deep reasoning)</option>
+                    <option value="claude-3.5-sonnet">Claude 3.5 Sonnet (long-form drafting)</option>
+                  </Select>
+                )}
+              </Field>
+              <Field label={`Creativity: ${aiTemperature} (${aiTemperature < 0.4 ? "precise" : aiTemperature > 0.8 ? "creative" : "balanced"})`}>
+                {(p) => (
                   <input
+                    id={p.id}
+                    aria-describedby={p["aria-describedby"]}
                     type="range"
                     min="0.1"
                     max="1.2"
@@ -657,179 +444,110 @@ export default function SettingsModal({
                       setAiTemperature(val);
                       localStorage.setItem(`aura-aiTemperature-${currentUserEmail}`, String(val));
                     }}
-                    className="w-full h-1 bg-slate-200 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                    className="h-6 w-full cursor-pointer accent-[var(--c-accent)]"
                   />
-                </div>
-              </div>
-            )}
+                )}
+              </Field>
+            </SettingsGroup>
+          )}
 
-            {/* 8. Connected Accounts */}
-            {activeTab === "integrations" && (
-              <div className="flex flex-col gap-3">
-                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-2">Connect third-party enterprise tools to sync notes directly as task tickets or specs.</p>
-                
+          {activeTab === "integrations" && (
+            <SettingsGroup description="Connect tools to sync notes as tickets, specs or backups.">
+              <ul className="space-y-2">
                 {[
-                  { name: "Google Drive Backup", desc: "Automate raw PDF export formats into private storage folders.", icon: HardDrive },
-                  { name: "Slack Communications", desc: "Broadcast generated board minutes and summaries to selected channels.", icon: Link },
-                  { name: "GitHub Repository Sync", desc: "Commit markdown document files straight to codebases on save.", icon: Key },
-                ].map((item, i) => {
-                  const isConnected = !!integrations[item.name];
+                  { name: "Google Drive Backup", desc: "Export PDFs into private Drive folders.", icon: HardDrive },
+                  { name: "Slack Communications", desc: "Post minutes and summaries to channels.", icon: Link },
+                  { name: "GitHub Repository Sync", desc: "Commit Markdown files to a repository on save.", icon: Key },
+                ].map((item) => {
+                  const on = !!integrations[item.name];
                   return (
-                    <div
-                      key={i}
-                      className={`p-3 rounded-xl border flex items-center justify-between ${
-                        activeTheme === "dark" ? "bg-zinc-950/40 border-zinc-800" : "bg-slate-50 border-slate-100"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                          <item.icon size={13} />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-900 dark:text-zinc-200">{item.name}</span>
-                          <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{item.desc}</span>
-                        </div>
+                    <li key={item.name} className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-hover text-fg-muted"><item.icon size={14} /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium text-fg">{item.name}</p>
+                        <p className="text-[12px] text-fg-muted">{item.desc}</p>
                       </div>
-
-                      <button
-                        onClick={() => toggleIntegration(item.name)}
-                        className={`px-2.5 py-1 text-[10px] font-bold rounded-lg cursor-pointer ${
-                          isConnected
-                            ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                            : "bg-slate-950 text-white dark:bg-white dark:text-zinc-950"
-                        }`}
-                      >
-                        {isConnected ? "Linked" : "Connect"}
-                      </button>
-                    </div>
+                      <Button size="sm" variant={on ? "secondary" : "primary"} aria-pressed={on} onClick={() => toggleIntegration(item.name)} leadingIcon={on ? <Check size={12} /> : undefined}>
+                        {on ? "Linked" : "Connect"}
+                      </Button>
+                    </li>
                   );
                 })}
-              </div>
-            )}
+              </ul>
+            </SettingsGroup>
+          )}
 
-            {/* 9. Billing & Subscription */}
-            {activeTab === "billing" && (
-              <div className="flex flex-col gap-5">
-                <div className="p-4 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex flex-col gap-3.5 shadow-md">
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-blue-100">Subscription Tier</span>
-                      <span className="font-display font-extrabold text-lg mt-0.5">Aura Pro Enterprise Suite</span>
-                    </div>
-                    <span className="px-2 py-0.5 bg-white/20 rounded-full font-mono font-bold text-[9px] uppercase tracking-wider">Active</span>
+          {activeTab === "billing" && (
+            <div className="space-y-6">
+              <div className="rounded-lg border border-line bg-panel p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] text-fg-muted">Current plan</p>
+                    <p className="mt-0.5 text-[16px] font-semibold text-fg">Aura Pro Enterprise</p>
                   </div>
-
-                  <div className="flex justify-between text-xs pt-2 border-t border-white/20 text-blue-100">
-                    <span>Re-bills Monthly ($12/mo)</span>
-                    <span>Next renewal: {nextRenewalDate}</span>
-                  </div>
+                  <Badge tone="success">Active</Badge>
                 </div>
-
-                <div>
-                  <h4 className="font-semibold text-slate-900 dark:text-zinc-100 mb-2">Billing History Invoice logs</h4>
-                  <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden text-[10px] font-mono">
-                    <table className="w-full text-left">
-                      <tr className="bg-slate-50 dark:bg-zinc-900 text-slate-400 border-b border-slate-100 dark:border-zinc-800">
-                        <th className="p-2">Invoice Code</th>
-                        <th className="p-2">Billed Date</th>
-                        <th className="p-2">Receipt PDF</th>
-                      </tr>
-                      <tr className="hover:bg-slate-50/20 text-slate-600 dark:text-zinc-300">
-                        <td className="p-2 font-medium">#INV-405111</td>
-                        <td className="p-2">2026-07-05</td>
-                        <td className="p-2 text-blue-500 cursor-pointer hover:underline font-bold">Download</td>
-                      </tr>
-                    </table>
-                  </div>
+                <div className="mt-3 flex justify-between border-t border-line pt-3 text-[12px] text-fg-muted">
+                  <span>$12 / month</span>
+                  <span>Renews {nextRenewalDate}</span>
                 </div>
               </div>
-            )}
+              <SettingsGroup title="Invoices">
+                <DataTable head={["Invoice", "Date", "Receipt"]} rows={[["#INV-405111", "2026-07-05", <span key="d" className="text-accent">Download</span>]]} />
+              </SettingsGroup>
+            </div>
+          )}
 
-            {/* 10. Developer API Keys */}
-            {activeTab === "apikeys" && (
-              <div className="flex flex-col gap-4">
-                <p className="text-[11px] text-slate-400 dark:text-zinc-500">Query your strategy drafts from outside scripts. Provide names to generate a secure secret credentials key.</p>
-                
-                <form onSubmit={handleGenerateToken} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newTokenName}
-                    onChange={(e) => setNewTokenName(e.target.value)}
-                    placeholder="Key label (e.g. CI pipeline RETRO)"
-                    className={`flex-grow text-xs px-3 py-2.5 rounded-xl border outline-none ${
-                      activeTheme === "dark"
-                        ? "bg-zinc-950 border-zinc-800 text-zinc-300"
-                        : "bg-slate-50 border-slate-200 text-slate-700"
-                    }`}
-                  />
-                  <button type="submit" className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl text-xs flex items-center gap-1 shadow-sm cursor-pointer">
-                    <Plus size={13} />
-                    Generate
-                  </button>
-                </form>
-
-                <div className="flex flex-col gap-1.5 mt-2">
+          {activeTab === "apikeys" && (
+            <div className="space-y-4">
+              <p className="text-[12px] text-fg-muted">Access your notes from external scripts. Name a key to generate it.</p>
+              <form onSubmit={handleGenerateToken} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Field label="Key label">
+                    {(p) => <Input {...p} value={newTokenName} onChange={(e) => setNewTokenName(e.target.value)} placeholder="e.g. CI pipeline" />}
+                  </Field>
+                </div>
+                <Button type="submit" variant="primary" leadingIcon={<Plus size={13} />}>Generate</Button>
+              </form>
+              {apiTokens.length === 0 ? (
+                <EmptyState icon={<Key size={18} />} title="No API keys" description="Generate a key to call the Aura API." />
+              ) : (
+                <ul className="space-y-2">
                   {apiTokens.map((tok) => (
-                    <div
-                      key={tok.id}
-                      className={`p-3 rounded-xl border flex items-center justify-between text-[11px] font-mono ${
-                        activeTheme === "dark" ? "bg-zinc-950/40 border-zinc-800" : "bg-slate-50 border-slate-100"
-                      }`}
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-sans font-bold text-slate-800 dark:text-zinc-100">{tok.name}</span>
-                        <span className="text-[10px] text-blue-500 mt-0.5">{tok.key}</span>
+                    <li key={tok.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-panel p-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium text-fg">{tok.name}</p>
+                        <p className="truncate font-mono text-[12px] text-fg-muted">{tok.key}</p>
                       </div>
-                      <button
-                        onClick={() => handleDeleteToken(tok.id)}
-                        className="text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+                      <IconButton label={`Delete key ${tok.name}`} onClick={() => handleDeleteToken(tok.id)} className="max-sm:!h-10 max-sm:!w-10 hover:!text-danger">
+                        <Trash2 size={14} />
+                      </IconButton>
+                    </li>
                   ))}
-                </div>
-              </div>
-            )}
+                </ul>
+              )}
+            </div>
+          )}
 
-            {/* 11. Keyboard shortcuts tab */}
-            {activeTab === "shortcuts" && (
-              <div className="flex flex-col gap-4">
-                
-                <div className="border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-zinc-900 text-slate-400 dark:text-zinc-500 font-semibold border-b border-slate-100 dark:border-zinc-800">
-                        <th className="p-2.5">Command</th>
-                        <th className="p-2.5">Key Binding</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/50">
-                      {[
-                        { cmd: "Search Action Palette", keys: "⌘ K or Ctrl + K" },
-                        { cmd: "Initialize New Note", keys: "Alt + N" },
-                        { cmd: "Toggle Settings Drawer", keys: "Alt + S" },
-                        { cmd: "Toggle Full-Screen Focus", keys: "Alt + F" },
-                        { cmd: "Duplicate Active Note", keys: "Alt + D" },
-                        { cmd: "Archive Active Note", keys: "Alt + A" },
-                        { cmd: "Trash Active Note", keys: "Alt + T" },
-                        { cmd: "Lock / Unlock Note", keys: "Alt + L" },
-                        { cmd: "Trigger Slash commands", keys: "/ (on new line)" },
-                      ].map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/20">
-                          <td className="p-2.5 text-slate-700 dark:text-zinc-300 font-medium">{item.cmd}</td>
-                          <td className="p-2.5 font-mono text-[11px] text-blue-500 dark:text-indigo-400">{item.keys}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-          </div>
+          {activeTab === "shortcuts" && (
+            <SettingsGroup>
+              <SettingRow title="Keyboard shortcuts" hint="Enable or disable global shortcuts.">
+                <Switch label="Keyboard shortcuts" checked={settings.shortcutsEnabled !== false} onChange={() => onUpdateSettings({ ...settings, shortcutsEnabled: settings.shortcutsEnabled === false })} />
+              </SettingRow>
+              <ul className="rounded-lg border border-line">
+                {SHORTCUTS.map(([cmd, keys]) => (
+                  <li key={cmd} className="flex items-center justify-between gap-3 border-b border-line px-3 py-2 last:border-b-0">
+                    <span className="text-[13px] text-fg">{cmd}</span>
+                    <span className="flex items-center gap-1">
+                      {keys.map((k) => <Kbd key={k}>{k}</Kbd>)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </SettingsGroup>
+          )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

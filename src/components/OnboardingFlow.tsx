@@ -1,19 +1,6 @@
-import React, { useState } from "react";
-import {
-  Sparkles,
-  ArrowRight,
-  Layers,
-  Palette,
-  Import,
-  Users,
-  CheckCircle2,
-  Trash2,
-  Plus,
-  Moon,
-  Sun,
-  Laptop,
-  Check
-} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Layers, Moon, Plus, Sun, X } from "lucide-react";
+import { Button, Field, IconButton, Input, Kbd, Logo, cn } from "../ui";
 
 interface OnboardingFlowProps {
   theme: "light" | "dark";
@@ -26,11 +13,15 @@ interface OnboardingFlowProps {
   }) => void;
 }
 
-export default function OnboardingFlow({
-  theme,
-  onSetTheme,
-  onOnboardingComplete,
-}: OnboardingFlowProps) {
+const TOTAL_STEPS = 6;
+
+const IMPORT_OPTIONS = [
+  { key: "guides", title: "Aura Markdown guide", meta: "2 notes. Recommended." },
+  { key: "checklists", title: "Sprint checklists", meta: "1 note. Templates." },
+  { key: "examples", title: "Strategy drafts and OKRs", meta: "3 notes. Examples." },
+];
+
+export default function OnboardingFlow({ theme, onSetTheme, onOnboardingComplete }: OnboardingFlowProps) {
   const [step, setStep] = useState(1);
 
   // Step state parameters
@@ -48,6 +39,8 @@ export default function OnboardingFlow({
     checklists: true,
     examples: false,
   });
+
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   const handleAddInvite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +60,7 @@ export default function OnboardingFlow({
   };
 
   const handleNext = () => {
-    if (step < 6) {
+    if (step < TOTAL_STEPS) {
       setStep(step + 1);
     } else {
       // Completed, invoke success handler
@@ -89,321 +82,278 @@ export default function OnboardingFlow({
     if (step > 1) setStep(step - 1);
   };
 
+  // Move focus to the step heading so screen readers announce the new screen.
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [step]);
+
+  // Enter continues, unless it would activate a control or submit the invite form.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter" || e.defaultPrevented) return;
+    const el = e.target as HTMLElement;
+    const tag = el.tagName;
+    if (tag === "BUTTON" || tag === "A" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (step === 5 && tag === "INPUT") return;
+    e.preventDefault();
+    handleNext();
+  };
+
+  const eyebrow = (n: number) => `Step ${n} of ${TOTAL_STEPS}`;
+  const h2 = "text-[20px] font-semibold tracking-tight outline-none";
+  const lead = "mt-1.5 text-[14px] leading-relaxed text-fg-muted";
+
   return (
     <div
       id="onboarding-viewport"
-      className="min-h-screen flex flex-col items-center justify-center p-6 transition-colors duration-200 bg-bg-primary text-text-primary"
+      onKeyDown={onKeyDown}
+      className="flex min-h-screen flex-col items-center bg-surface px-4 py-6 text-fg"
     >
-      {/* Top Wizard Steps Tracker */}
-      <div className="w-full max-w-lg mb-8 flex items-center justify-between px-2 select-none">
-        {[1, 2, 3, 4, 5, 6].map((idx) => (
-          <React.Fragment key={idx}>
-            <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                step >= idx
-                  ? "bg-blue-500 text-white font-semibold"
-                  : theme === "dark"
-                  ? "bg-zinc-800 text-zinc-500"
-                  : "bg-slate-200 text-slate-500"
-              }`}
-            >
-              {idx}
-            </div>
-            {idx < 6 && (
-              <div
-                className={`flex-grow h-0.5 mx-1.5 transition-all ${
-                  step > idx ? "bg-blue-500" : theme === "dark" ? "bg-zinc-800" : "bg-slate-200"
-                }`}
-              ></div>
-            )}
-          </React.Fragment>
-        ))}
-      </div>
+      <header className="flex w-full max-w-[480px] items-center justify-between">
+        <Logo size={24} />
+        {step < TOTAL_STEPS && (
+          <Button variant="ghost" size="sm" onClick={handleNext} className="max-sm:h-10">
+            Skip
+          </Button>
+        )}
+      </header>
 
-      {/* Main Multi-step Card container */}
-      <div
-        className="w-full max-w-lg p-8 rounded-3xl border border-border-primary flex flex-col min-h-[440px] justify-between relative transition-all bg-bg-secondary text-text-primary shadow-xl dark:shadow-2xl dark:shadow-black/40"
-      >
-        {/* STEP 1: Welcome & Onboarding Intention */}
-        {step === 1 && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-2">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/10 mb-2">
-                <Sparkles size={18} />
-              </div>
-              <h1 className="font-display font-extrabold text-[24px] tracking-tight leading-snug">
-                Congratulations on configuring your credentials!
+      <main className="flex w-full max-w-[480px] flex-1 flex-col justify-center py-8">
+        <div className="mb-6" role="group" aria-label="Progress">
+          <div className="flex gap-1.5" aria-hidden="true">
+            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+              <span
+                key={i}
+                className={cn("h-1 flex-1 rounded-full motion-safe:transition-colors", i < step ? "bg-accent" : "bg-active")}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[12px] text-fg-muted" aria-live="polite">
+            {eyebrow(step)}
+          </p>
+        </div>
+
+        <div className="min-h-[300px]">
+          {step === 1 && (
+            <div>
+              <h1 ref={headingRef} tabIndex={-1} className="text-[26px] font-semibold leading-tight tracking-tight outline-none">
+                Welcome to Aura
               </h1>
-              <p className="text-xs text-slate-400 dark:text-zinc-500 leading-relaxed">
-                Welcome to Aura Next. Before unlocking your redundant document pipeline and Gemini-driven assistants, let's configure your strategic defaults in under 30 seconds.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-slate-100 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40 flex flex-col gap-3">
-              <h3 className="font-semibold text-xs text-slate-800 dark:text-zinc-200">What's in your Sandbox Package:</h3>
-              <ul className="flex flex-col gap-2.5 text-[11px] leading-tight text-slate-500 dark:text-zinc-400">
-                <li className="flex items-center gap-2"><CheckCircle2 size={13} className="text-blue-500" /> Standard 3.5 Gemini contextual model triggers</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={13} className="text-blue-500" /> Offline local backup duplication engine</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={13} className="text-blue-500" /> Full spotlight searching palette (⌘K)</li>
+              <p className={lead}>A few quick choices, then your workspace is ready. It takes under a minute.</p>
+              <ul className="mt-6 space-y-3 rounded-lg border border-line bg-panel p-4 text-[13px]">
+                {[
+                  "Notes are stored on your device first and synced when online",
+                  "AI is optional and off until you turn it on",
+                  "Jump anywhere with the command palette",
+                ].map((t) => (
+                  <li key={t} className="flex items-start gap-2.5">
+                    <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-accent" />
+                    {t}
+                  </li>
+                ))}
               </ul>
             </div>
-          </div>
-        )}
-
-        {/* STEP 2: Workspace Customization */}
-        {step === 2 && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-widest">Workspace Core</span>
-              <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">Designate your primary brain</h2>
-              <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">Isolate private notes lists, strategy folders, and document groups within your personal tenant.</p>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Workspace name</label>
-                <div className="relative flex items-center">
-                  <Layers size={13} className="absolute left-3.5 text-slate-400 dark:text-zinc-500" />
-                  <input
-                    type="text"
-                    value={workspaceName}
-                    onChange={(e) => setWorkspaceName(e.target.value)}
-                    required
-                    className={`w-full text-xs pl-9 pr-3 py-2.5 rounded-xl border outline-none ${
-                      theme === "dark"
-                        ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                        : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                    }`}
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Custom URL Prefix</label>
-                <div className="flex items-center">
-                  <span className={`px-3 py-2.5 text-xs border border-r-0 rounded-l-xl font-mono ${
-                    theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-500" : "bg-slate-100 border-slate-200 text-slate-500"
-                  }`}>
-                    auranotes.io/
-                  </span>
-                  <input
-                    type="text"
-                    value={workspaceSubdomain}
-                    onChange={(e) => setWorkspaceSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
-                    required
-                    className={`text-xs px-3 py-2.5 rounded-r-xl border border-l-0 outline-none flex-grow ${
-                      theme === "dark"
-                        ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                        : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: Choose Theme Mode */}
-        {step === 3 && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-widest">Interface Skin</span>
-              <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">Choose your ambient mode</h2>
-              <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">Configure eye-safe shades for optimal tactical writing focus.</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => selectThemeMode("light")}
-                className={`p-5 rounded-2xl border flex flex-col items-center gap-3 transition-all relative ${
-                  onboardTheme === "light"
-                    ? "border-blue-500 bg-blue-500/[0.02] text-blue-500"
-                    : "border-slate-200 hover:border-slate-300 dark:border-zinc-800 text-slate-500"
-                } cursor-pointer`}
-              >
-                <div className={`w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 ${
-                  onboardTheme === "light" ? "scale-105" : ""
-                }`}>
-                  <Sun size={18} />
-                </div>
-                <span className="font-semibold text-xs">Light Palette</span>
-                {onboardTheme === "light" && <Check size={12} className="absolute top-3 right-3 stroke-[3]" />}
-              </button>
-
-              <button
-                onClick={() => selectThemeMode("dark")}
-                className={`p-5 rounded-2xl border flex flex-col items-center gap-3 transition-all relative ${
-                  onboardTheme === "dark"
-                    ? "border-blue-500 bg-blue-500/[0.02] text-indigo-400"
-                    : "border-slate-200 hover:border-slate-300 dark:border-zinc-800 text-slate-500"
-                } cursor-pointer`}
-              >
-                <div className={`w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 ${
-                  onboardTheme === "dark" ? "scale-105" : ""
-                }`}>
-                  <Moon size={18} />
-                </div>
-                <span className="font-semibold text-xs">Dark Palette</span>
-                {onboardTheme === "dark" && <Check size={12} className="absolute top-3 right-3 stroke-[3]" />}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 4: Import mock templates */}
-        {step === 4 && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-widest">Document seeding</span>
-              <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">Import startup blueprints</h2>
-              <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">Accelerate strategy setup with preset notes. Check files to load.</p>
-            </div>
-
-            <div className="flex flex-col gap-2.5">
-              {[
-                { key: "guides", title: "Aura Markdown onboarding manual", count: "2 files • Recommended", icon: Import },
-                { key: "checklists", title: "Standard Sprint action-items lists", count: "1 file • Templates", icon: Import },
-                { key: "examples", title: "Dummy strategy drafts & OKRs", count: "3 files • Playbook examples", icon: Import },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => setImportSelected({ ...importSelected, [item.key]: !importSelected[item.key] })}
-                  className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-colors ${
-                    importSelected[item.key]
-                      ? "border-blue-500 bg-blue-500/[0.02] text-blue-500"
-                      : "border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
-                  } cursor-pointer`}
-                >
-                  <div className="flex items-center gap-3">
-                    <item.icon size={13} className="text-blue-500" />
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-slate-900 dark:text-zinc-200">{item.title}</span>
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono mt-0.5">{item.count}</span>
-                    </div>
-                  </div>
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                    importSelected[item.key] ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-zinc-700"
-                  }`}>
-                    {importSelected[item.key] && <Check size={10} className="stroke-[3]" />}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 5: Invite team members */}
-        {step === 5 && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono font-bold text-blue-500 uppercase tracking-widest">Collaborators</span>
-              <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">Invite core strategy team</h2>
-              <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">Onboard developers, copywriters, or directors to review synced drafts.</p>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <form onSubmit={handleAddInvite} className="flex gap-1.5">
-                <input
-                  type="email"
-                  placeholder="collaborator@company.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className={`flex-grow text-xs px-3 py-2 rounded-xl border outline-none ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-700"
-                      : "bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-400"
-                  }`}
-                />
-                <button
-                  type="submit"
-                  disabled={!inviteEmail.includes("@")}
-                  className={`px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-sm ${
-                    !inviteEmail.includes("@") ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-                  }`}
-                >
-                  <Plus size={13} />
-                  Add
-                </button>
-              </form>
-
-              {/* Scrollable Emails Container */}
-              <div className="flex-grow max-h-[140px] overflow-y-auto flex flex-col gap-1.5 pr-1">
-                {invitedList.map((email, idx) => (
-                  <div
-                    key={idx}
-                    className={`px-3 py-2 rounded-lg border text-xs flex items-center justify-between font-mono ${
-                      theme === "dark" ? "bg-zinc-950 border-zinc-850" : "bg-slate-50 border-slate-100"
-                    }`}
-                  >
-                    <span>{email}</span>
-                    <button
-                      onClick={() => handleRemoveInvite(idx)}
-                      className="text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-
-                {invitedList.length === 0 && (
-                  <div className="text-center text-[11px] text-slate-400 py-6 italic">No emails added yet. Invite teams for Pro sync!</div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 6: Finished checks */}
-        {step === 6 && (
-          <div className="flex flex-col gap-5 text-center items-center py-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center animate-bounce mb-2">
-              <CheckCircle2 size={28} />
-            </div>
-
-            <h2 className="font-display font-bold text-xl text-slate-900 dark:text-white">Workspace is ready to launch!</h2>
-            <p className="text-[11.5px] leading-relaxed text-slate-400 dark:text-zinc-500 max-w-sm">
-              We completed isolation of **{workspaceName}** on our safe cloud volume container. Your template blueprints are seeded, and invited teammates will receive access dispatches immediately.
-            </p>
-
-            <div className={`p-4 rounded-xl border w-full text-left text-[11px] font-mono leading-relaxed ${
-              theme === "dark" ? "bg-zinc-900 border-zinc-800" : "bg-slate-50 border-slate-200"
-            }`}>
-              <div className="flex justify-between border-b border-slate-200/50 dark:border-zinc-800 pb-1.5 mb-1.5">
-                <span>Theme Preset:</span>
-                <span className="text-blue-500 capitalize">{onboardTheme} Mode</span>
-              </div>
-              <div className="flex justify-between">
-                <span>URL Domain:</span>
-                <span className="text-purple-500">auranotes.io/{workspaceSubdomain}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Action Panel: Back & Next Button */}
-        <div className="flex gap-3 mt-8 pt-4 border-t border-slate-100 dark:border-zinc-800">
-          {step > 1 && (
-            <button
-              onClick={handlePrev}
-              className={`px-5 py-2.5 border text-xs font-semibold rounded-xl transition-all active:scale-[0.98] ${
-                theme === "dark"
-                  ? "border-zinc-800 hover:bg-zinc-900"
-                  : "border-slate-200 hover:bg-slate-50"
-              } cursor-pointer`}
-            >
-              Previous
-            </button>
           )}
 
-          <button
-            onClick={handleNext}
-            className="flex-grow py-2.5 bg-blue-500 hover:bg-blue-600 active:scale-[0.98] text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/10 cursor-pointer"
-          >
-            <span>{step === 6 ? "Activate My Space" : "Continue"}</span>
-            <ArrowRight size={13} />
-          </button>
+          {step === 2 && (
+            <div>
+              <h2 ref={headingRef} tabIndex={-1} className={h2}>Name your workspace</h2>
+              <p className={lead}>This is where your notes, folders and teammates live. You can change it later.</p>
+              <div className="mt-6 flex flex-col gap-4">
+                <Field label="Workspace name">
+                  {(p) => (
+                    <Input
+                      {...p}
+                      size="lg"
+                      type="text"
+                      value={workspaceName}
+                      onChange={(e) => setWorkspaceName(e.target.value)}
+                      leadingIcon={<Layers size={14} />}
+                      required
+                    />
+                  )}
+                </Field>
+                <Field label="URL prefix" hint="Lowercase letters and numbers only.">
+                  {(p) => (
+                    <div className="flex">
+                      <span className="flex h-10 items-center rounded-l-lg border border-r-0 border-line bg-sidebar px-3 font-mono text-[13px] text-fg-muted">
+                        auranotes.io/
+                      </span>
+                      <Input
+                        {...p}
+                        size="lg"
+                        type="text"
+                        value={workspaceSubdomain}
+                        onChange={(e) => setWorkspaceSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+                        className="rounded-l-none"
+                        required
+                      />
+                    </div>
+                  )}
+                </Field>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div>
+              <h2 ref={headingRef} tabIndex={-1} className={h2}>Pick a theme</h2>
+              <p className={lead}>Choose what is easiest on your eyes. You can switch any time.</p>
+              <div role="radiogroup" aria-label="Theme" className="mt-6 grid grid-cols-2 gap-3">
+                {(
+                  [
+                    { id: "light", label: "Light", icon: Sun },
+                    { id: "dark", label: "Dark", icon: Moon },
+                  ] as const
+                ).map((o) => {
+                  const on = onboardTheme === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => selectThemeMode(o.id)}
+                      className={cn(
+                        "relative flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border bg-panel p-4 text-[13px] font-medium",
+                        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                        on ? "border-accent bg-accent-soft text-accent" : "border-line text-fg hover:bg-hover",
+                      )}
+                    >
+                      <o.icon size={18} />
+                      {o.label}
+                      {on && <Check size={14} className="absolute right-2.5 top-2.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div>
+              <h2 ref={headingRef} tabIndex={-1} className={h2}>Start with some notes</h2>
+              <p className={lead}>Optional. Load starter notes so the workspace is not empty.</p>
+              <div className="mt-6 flex flex-col gap-2">
+                {IMPORT_OPTIONS.map((item) => {
+                  const on = !!importSelected[item.key];
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      onClick={() => setImportSelected({ ...importSelected, [item.key]: !on })}
+                      className={cn(
+                        "flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border bg-panel px-3.5 py-2.5 text-left",
+                        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                        on ? "border-accent bg-accent-soft" : "border-line hover:bg-hover",
+                      )}
+                    >
+                      <span className="flex flex-col">
+                        <span className="text-[13px] font-medium text-fg">{item.title}</span>
+                        <span className="text-[12px] text-fg-muted">{item.meta}</span>
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                          on ? "border-accent bg-accent text-accent-fg" : "border-line-strong",
+                        )}
+                      >
+                        {on && <Check size={11} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div>
+              <h2 ref={headingRef} tabIndex={-1} className={h2}>Invite teammates</h2>
+              <p className={lead}>Optional. They will get access to this workspace.</p>
+              <form onSubmit={handleAddInvite} className="mt-6 flex items-end gap-2">
+                <Field label="Email address" className="flex-1">
+                  {(p) => (
+                    <Input
+                      {...p}
+                      size="lg"
+                      type="email"
+                      autoComplete="off"
+                      placeholder="teammate@company.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                    />
+                  )}
+                </Field>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="lg"
+                  disabled={!inviteEmail.includes("@")}
+                  leadingIcon={<Plus size={14} />}
+                >
+                  Add
+                </Button>
+              </form>
+              <ul className="mt-4 flex max-h-[168px] flex-col gap-1.5 overflow-y-auto" aria-label="Invited teammates">
+                {invitedList.map((email, idx) => (
+                  <li
+                    key={idx}
+                    className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-line bg-panel pl-3 pr-1 text-[13px]"
+                  >
+                    <span className="truncate">{email}</span>
+                    <IconButton label={`Remove ${email}`} variant="ghost" size="md" onClick={() => handleRemoveInvite(idx)}>
+                      <X size={14} />
+                    </IconButton>
+                  </li>
+                ))}
+              </ul>
+              {invitedList.length === 0 && (
+                <p className="mt-4 rounded-md border border-dashed border-line px-3 py-6 text-center text-[13px] text-fg-muted">
+                  No one invited yet. You can invite people later from workspace settings.
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === 6 && (
+            <div>
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-soft text-success">
+                <CheckCircle2 size={22} />
+              </span>
+              <h2 ref={headingRef} tabIndex={-1} className={cn(h2, "mt-4")}>You are all set</h2>
+              <p className={lead}>
+                {workspaceName} is ready. {invitedList.length > 0 ? "Invitations go out when you continue." : "You can invite people later."}
+              </p>
+              <dl className="mt-6 divide-y divide-line rounded-lg border border-line bg-panel text-[13px]">
+                <div className="flex justify-between px-4 py-2.5">
+                  <dt className="text-fg-muted">Theme</dt>
+                  <dd className="font-medium capitalize">{onboardTheme}</dd>
+                </div>
+                <div className="flex justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-fg-muted">URL</dt>
+                  <dd className="truncate font-mono font-medium">auranotes.io/{workspaceSubdomain}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
         </div>
-      </div>
+
+        <div className="mt-8 flex items-center gap-2">
+          {step > 1 && (
+            <Button variant="secondary" size="lg" onClick={handlePrev} leadingIcon={<ArrowLeft size={14} />} className="max-sm:h-11">
+              Back
+            </Button>
+          )}
+          <Button variant="primary" size="lg" onClick={handleNext} trailingIcon={<ArrowRight size={14} />} className="flex-1 max-sm:h-11">
+            {step === TOTAL_STEPS ? "Open my workspace" : "Continue"}
+          </Button>
+        </div>
+        <p className="mt-3 hidden text-center text-[12px] text-fg-subtle sm:block">
+          Press <Kbd>Enter</Kbd> to continue
+        </p>
+      </main>
     </div>
   );
 }

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aura Next",
+  "version": "0.1.0",
+  "identifier": "io.aura.next",
+  "build": {
+    "frontendDist": "../../../dist",
+    "devUrl": "http://localhost:3000"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      { "label": "main", "title": "Aura Next", "width": 1280, "height": 800, "minWidth": 800, "minHeight": 560 }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "capabilities": ["main", "quicknote"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"],
+    "category": "Productivity",
+    "resources": ["resources/model-catalog.json"],
+    "windows": { "webviewInstallMode": { "type": "downloadBootstrapper" } }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_CONTENTS_OF_GENERATED_PUBLIC_KEY (tauri signer generate)",
+      "endpoints": ["https://releases.example.com/aura/{{target}}/{{arch}}/{{current_version}}"],
+      "windows": { "installMode": "passive" }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "quicknote",
+  "description": "Quick-note capture window: may only save text and hide itself.",
+  "windows": ["quicknote"],
+  "permissions": ["allow-quicknote-save", "allow-quicknote-hide"]
+}

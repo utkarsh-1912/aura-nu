@@ -1,25 +1,29 @@
+import { apiFetch } from "../lib/apiClient";
 import React, { useState, useRef, useEffect } from "react";
 import {
-  Sparkles,
-  RefreshCw,
-  CheckCircle2,
-  ListTodo,
-  FileText,
-  Languages,
-  Tags,
-  FolderPlus,
-  Send,
-  MessageSquare,
-  HelpCircle,
-  AlertCircle,
-  Copy,
-  ChevronRight,
-  BookOpen,
-  ArrowRight,
-  Mic,
-  MicOff
+  Sparkles, RefreshCw, ListTodo, FileText, Languages, Tags, FolderPlus, Send, MessageSquare, HelpCircle,
+  Copy, ChevronRight, BookOpen, ArrowRight, Mic, MicOff, Bot, Play, ExternalLink,
 } from "lucide-react";
-import { Note } from "../types";
+import { Button, IconButton, Input, Textarea, Select, Tabs, Badge, Kbd, EmptyState, cn } from "../ui";
+import { SectionLabel, ErrorBanner, LoadingLines, MessageRow, RowAction, RunStatusBadge, RunTimeline } from "./ai/parts";
+import {
+  Note,
+  Folder,
+  Reminder,
+  AgentDefinition,
+  AgentRun,
+  AgentExecutionStep,
+  AgentToolCall,
+  AgentToolName,
+} from "../types";
+import {
+  loadEnterpriseAgents,
+  loadAgentRuns,
+  saveAgentRun,
+  buildDeterministicAgentPlan,
+  executeSingleToolCall,
+  AGENT_TOOL_METADATA,
+} from "../lib/agentTools";
 
 interface AiPanelProps {
   note: Note | null;
@@ -28,6 +32,15 @@ interface AiPanelProps {
   theme: "light" | "dark";
   onAddToast: (message: string, type: "success" | "info" | "error") => void;
   currentUserEmail: string;
+  notes?: Note[];
+  folders?: Folder[];
+  reminders?: Reminder[];
+  activeWorkspaceId?: string;
+  onUpdateNotes?: (updatedNotes: Note[]) => void;
+  onUpdateFolders?: (updatedFolders: Folder[]) => void;
+  onUpdateReminders?: (updatedReminders: Reminder[]) => void;
+  onSelectNote?: (noteId: string) => void;
+  onNavigateToAgentStudio?: () => void;
 }
 
 const OFFLINE_SPANISH_DICT: Record<string, string> = {
@@ -86,7 +99,7 @@ function performOfflineTranslation(text: string, lang: string): string {
   const dictionary = lang.toLowerCase() === "spanish" ? OFFLINE_SPANISH_DICT : OFFLINE_FRENCH_DICT;
   let translated = text;
   Object.entries(dictionary).forEach(([key, value]) => {
-    const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     const regex = new RegExp(escapedKey, "gi");
     translated = translated.replace(regex, value);
   });
@@ -102,7 +115,7 @@ async function translateTextBrowser(text: string, sourceLang = "en", targetLang 
       });
       return await translator.translate(text);
     }
-    
+
     if (typeof (window as any).ai !== "undefined" && typeof (window as any).ai.translator !== "undefined" && typeof (window as any).ai.translator.create === "function") {
       const translator = await (window as any).ai.translator.create({
         sourceLanguage: sourceLang,
@@ -132,7 +145,7 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
     case "improve":
       return `# ${title}\n\n${cleanContent || "*No content provided to improve.*"}\n\n---\n*💡 **Improvements Applied**: Standardized spacing, corrected grammar, and enhanced overall professional tone.*`;
 
-    case "translate":
+    case "translate": {
       const lang = language || "Spanish";
       const translatedContent = performOfflineTranslation(cleanContent, lang);
       if (lang.toLowerCase() === "spanish") {
@@ -140,8 +153,9 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
       } else {
         return `# ${title} (Translated to ${lang})\n\nThis is an elegant and professional translation of your note into ${lang}.\n\n## Content:\n${translatedContent.replace(/#+/g, "###")}`;
       }
+    }
 
-    case "action-items":
+    case "action-items": {
       const tasks = lines
         .filter(l => l.toLowerCase().includes("todo") || l.toLowerCase().includes("need") || l.startsWith("-") || l.startsWith("*"))
         .map(l => l.replace(/^[-*+\s\d.]*/, "").trim())
@@ -150,6 +164,7 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
         tasks.push(`Review and audit ${title} document structure`, `Confirm timeline and deliverables with stakeholders`);
       }
       return `### 🎯 Action Items\n\nBased on your note, here are the extracted tasks:\n\n${tasks.map(t => `- [ ] ${t}`).join("\n")}`;
+    }
 
     case "meeting-summary":
       return `# 📅 Meeting Minutes: ${title}\n\n**Date**: ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}  \n**Attendees**: Team Leads, Project Owners  \n\n## 📝 Discussion Points\n- Reviewed current progress and layout alignment for ${title}.\n- Addressed open questions and cleared secondary design bottlenecks.\n\n## 💡 Key Decisions\n- Approved the draft specifications and timeline.\n- Confirmed subsequent phase milestones.\n\n## 🎯 Action Items\n- [ ] Distribute meeting minutes to all stakeholders.\n- [ ] Update tracking dashboard with current milestones.`;
@@ -157,7 +172,7 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
     case "checklist":
       return `### 📋 Step-by-Step Launch Checklist\n\n#### Phase 1: Initiation & Audit\n- [ ] Audit document specifications for **${title}**\n- [ ] Align with product managers on scope\n\n#### Phase 2: Refinement & Validation\n- [ ] Refine core implementation details\n- [ ] Verify styling against design guidelines\n\n#### Phase 3: Deployment & Review\n- [ ] Deploy updates to staging\n- [ ] Conduct final user acceptance review`;
 
-    case "tags":
+    case "tags": {
       const tags = ["General", "Enterprise"];
       const lower = cleanContent.toLowerCase();
       if (lower.includes("launch") || lower.includes("product")) tags.push("Launch");
@@ -166,8 +181,9 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
       if (lower.includes("design") || lower.includes("style")) tags.push("Design");
       if (tags.length < 3) tags.push("Workspace");
       return JSON.stringify(tags.slice(0, 4));
+    }
 
-    case "folders":
+    case "folders": {
       let folder = "General";
       const txt = cleanContent.toLowerCase();
       if (txt.includes("meeting") || txt.includes("sync") || txt.includes("attendees")) folder = "Meetings";
@@ -175,13 +191,15 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
       else if (txt.includes("design") || txt.includes("style") || txt.includes("layout")) folder = "Design";
       else if (txt.includes("marketing") || txt.includes("sale") || txt.includes("launch")) folder = "Projects";
       return JSON.stringify({ suggestedFolder: folder });
+    }
 
-    case "chat":
+    case "chat": {
       const query = userQuery?.toLowerCase() || "";
       if (query.includes("summarize") || query.includes("summary")) {
         return `Here is a quick summary of **${title}**:\n\nThe document contains details regarding the current workspace setup, containing tags and structure. Let me know if you would like me to rewrite or format it!`;
       }
-      return `### 🤖 Aura Co-Pilot\n\nI'm here to help you refine your documents! I've analyzed your active note (**${title}**).\n\nRegarding your request: *"${userQuery || "Help me organize this"}"*\n\nHere is a recommendation:\n- Try selecting **Action Items** to extract tasks.\n- Use **Rewrite** to clean up raw headings.\n\nLet me know how else I can assist!`;
+      return `### 🤖 Aura Co-Pilot\n\nI'm here to help you refine your documents! I've analyzed your active note (**${title}**).\n\nRegarding your request: *"${userQuery || "Help me organize this"}"*\n\nHere is a recommendation:\n- Try selecting **Autonomous Agents** to run multi-step workspace workflows.\n- Use **Smart Shortcuts** to summarize or extract tasks.\n\nLet me know how else I can assist!`;
+    }
 
     default:
       return `Generated response for action: ${action}`;
@@ -191,7 +209,16 @@ function getFallbackAiResponse(action: string, content: string, language?: strin
 interface ChatMessage {
   sender: "user" | "ai";
   text: string;
+  error?: boolean;
 }
+
+const WRITE_TOOLS = new Set<string>([
+  "create_structured_note",
+  "update_existing_note",
+  "organize_notes_into_folders",
+  "create_workspace_reminders",
+  "run_compliance_audit",
+]);
 
 export default function AiPanel({
   note,
@@ -200,17 +227,282 @@ export default function AiPanel({
   theme,
   onAddToast,
   currentUserEmail,
+  notes = [],
+  folders = [],
+  reminders = [],
+  activeWorkspaceId = "ws-aura-core",
+  onUpdateNotes,
+  onUpdateFolders,
+  onUpdateReminders,
+  onSelectNote,
+  onNavigateToAgentStudio,
 }: AiPanelProps) {
   const [selectedLanguage, setSelectedLanguage] = useState("Spanish");
   const [isLoading, setIsLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
-  const [currentTab, setCurrentTab] = useState<"shortcuts" | "chat">("shortcuts");
-  
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<{ action: string; options: { language?: string } } | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [currentTab, setCurrentTab] = useState<"agents" | "shortcuts" | "chat">("agents");
+
+  // Agentic state
+  const [agents, setAgents] = useState<AgentDefinition[]>(() => loadEnterpriseAgents());
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(() => {
+    const loaded = loadEnterpriseAgents().filter((a) => a.isEnabled);
+    return loaded[0]?.id || "agent-researcher";
+  });
+  const [agentGoal, setAgentGoal] = useState("");
+  const [activeRun, setActiveRun] = useState<AgentRun | null>(null);
+  const [recentRuns, setRecentRuns] = useState<AgentRun[]>(() => loadAgentRuns().slice(0, 5));
+  const [isAgentRunning, setIsAgentRunning] = useState(false);
+  const [createdByRun, setCreatedByRun] = useState<Record<string, string>>({});
+
   // Chat state
   const [chatQuery, setChatQuery] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView?.({ block: "end" });
+  }, [chatHistory, isLoading]);
+
+  useEffect(() => {
+    const refreshed = loadEnterpriseAgents();
+    setAgents(refreshed);
+    setRecentRuns(loadAgentRuns().slice(0, 5));
+  }, [currentTab]);
+
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
+
+  const persistAndSyncRun = (run: AgentRun) => {
+    setActiveRun({ ...run });
+    const updated = saveAgentRun(run);
+    setRecentRuns(updated.slice(0, 5));
+    apiFetch("/api/agents/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run }),
+    }).catch(() => {});
+  };
+
+  /** Execute one tool call against the given pools and push results to the parent. */
+  const applyToolSideEffects = (
+    toolCall: AgentToolCall,
+    currentNotes: Note[],
+    currentFolders: Folder[],
+    currentReminders: Reminder[]
+  ): {
+    nextNotes: Note[];
+    nextFolders: Folder[];
+    nextReminders: Reminder[];
+    createdId?: string;
+    modifiedIds: string[];
+    output: string;
+  } => {
+    const exec = executeSingleToolCall(toolCall, {
+      workspaceId: activeWorkspaceId,
+      userEmail: currentUserEmail || "user@aura.enterprise",
+      notes: currentNotes,
+      folders: currentFolders,
+      reminders: currentReminders,
+      activeNote: note,
+    });
+
+    const before = new Map(currentNotes.map((n) => [n.id, n]));
+    const modifiedIds: string[] = [];
+    exec.updatedNotes.forEach((n) => {
+      if (before.has(n.id) && before.get(n.id) !== n && n.id !== exec.createdNoteId) modifiedIds.push(n.id);
+    });
+
+    if (exec.updatedNotes !== currentNotes && (exec.createdNoteId || modifiedIds.length > 0)) {
+      onUpdateNotes?.(exec.updatedNotes);
+      if (note && modifiedIds.includes(note.id)) {
+        const updatedActive = exec.updatedNotes.find((n) => n.id === note.id);
+        if (updatedActive) onUpdateNote(updatedActive);
+      }
+    }
+    if (exec.updatedFolders.length !== currentFolders.length) onUpdateFolders?.(exec.updatedFolders);
+    if (exec.updatedReminders.length !== currentReminders.length) onUpdateReminders?.(exec.updatedReminders);
+
+    return {
+      nextNotes: exec.updatedNotes,
+      nextFolders: exec.updatedFolders,
+      nextReminders: exec.updatedReminders,
+      createdId: exec.createdNoteId,
+      modifiedIds,
+      output: exec.summary,
+    };
+  };
+
+  const toolLabel = (name: string) => AGENT_TOOL_METADATA[name as AgentToolName]?.label || name;
+
+  const handleRunAgent = async () => {
+    if (!selectedAgent) return;
+    setIsAgentRunning(true);
+
+    const workspacePool = notes.length > 0 ? notes : note ? [note] : [];
+    const effectiveGoal =
+      agentGoal.trim() ||
+      (selectedAgent.id === "agent-researcher"
+        ? `Synthesize executive brief across ${note ? `"${note.title}" and related workspace notes` : "workspace notes"}`
+        : selectedAgent.id === "agent-organizer"
+        ? "Audit workspace notes and auto-categorize untagged or unorganized notes"
+        : selectedAgent.id === "agent-pm"
+        ? `Extract action items, sprint deliverables, and reminders from ${note ? `"${note.title}"` : "recent notes"}`
+        : "Run enterprise DLP, secret detection, and governance compliance scan");
+
+    const plan = buildDeterministicAgentPlan(selectedAgent, effectiveGoal, {
+      workspaceId: activeWorkspaceId,
+      userEmail: currentUserEmail || "user@aura.enterprise",
+      notes: workspacePool,
+      folders,
+      reminders,
+      activeNote: note,
+    });
+
+    const baseRun: AgentRun = {
+      id: `run-${Date.now()}`,
+      orgId: "org-aura-enterprise",
+      workspaceId: activeWorkspaceId,
+      agentId: selectedAgent.id,
+      agentName: selectedAgent.name,
+      userEmail: currentUserEmail || "user@aura.enterprise",
+      goal: effectiveGoal,
+      status: "running",
+      steps: [],
+      tokensUsed: 420,
+      createdAt: new Date().toISOString(),
+    };
+    persistAndSyncRun(baseRun);
+
+    const steps: AgentExecutionStep[] = [...plan.steps];
+    persistAndSyncRun({ ...baseRun, steps: [...steps] });
+
+    let workingNotes = [...workspacePool];
+    let workingFolders = [...folders];
+    let workingReminders = [...reminders];
+    const pending: AgentToolCall[] = [];
+    let createdId: string | undefined;
+
+    plan.proposedCalls.forEach((call, i) => {
+      // Calls needing human approval are never auto-executed.
+      if (call.status === "pending_approval") {
+        pending.push(call);
+        steps.push({
+          id: `step-gate-${i}-${Date.now()}`,
+          type: "approval_gate",
+          title: `Approval required: ${toolLabel(call.toolName)}`,
+          detail: `Agent "${selectedAgent.name}" requires approval before write actions run.`,
+          timestamp: new Date().toISOString(),
+          toolCall: call,
+        });
+        return;
+      }
+      if (call.status === "rejected" || call.status === "failed") return;
+
+      if (selectedAgent.autonomyLevel === "advisory_only" && WRITE_TOOLS.has(call.toolName)) {
+        steps.push({
+          id: `step-advisory-${i}-${Date.now()}`,
+          type: "observation",
+          title: `Advisory only: ${toolLabel(call.toolName)}`,
+          detail: `Recommended "${call.toolName}" was logged without changing workspace data.`,
+          timestamp: new Date().toISOString(),
+          toolCall: { ...call, status: "rejected" },
+        });
+        return;
+      }
+
+      const res = applyToolSideEffects(call, workingNotes, workingFolders, workingReminders);
+      workingNotes = res.nextNotes;
+      workingFolders = res.nextFolders;
+      workingReminders = res.nextReminders;
+      if (res.createdId) createdId = res.createdId;
+      steps.push({
+        id: `step-tool-${i}-${Date.now()}`,
+        type: "tool_call",
+        title: `Executed: ${toolLabel(call.toolName)}`,
+        detail: res.output,
+        timestamp: new Date().toISOString(),
+        toolCall: { ...call, status: "executed", resultSummary: res.output },
+      });
+    });
+
+    if (createdId) {
+      const id = createdId;
+      setCreatedByRun((prev) => ({ ...prev, [baseRun.id]: id }));
+    }
+
+    const awaiting = pending.length > 0;
+    steps.push({
+      id: `step-final-${Date.now()}`,
+      type: "final_answer",
+      title: awaiting ? "Run awaiting approval" : "Workflow completed",
+      detail: plan.finalSummary,
+      timestamp: new Date().toISOString(),
+    });
+
+    persistAndSyncRun({
+      ...baseRun,
+      status: awaiting ? "awaiting_approval" : "completed",
+      steps,
+      pendingToolCalls: awaiting ? pending : undefined,
+      finalSummary: plan.finalSummary,
+      tokensUsed: 1060,
+      completedAt: awaiting ? undefined : new Date().toISOString(),
+    });
+    setIsAgentRunning(false);
+    onAddToast(awaiting ? "Agent paused for your approval on write operation." : `${selectedAgent.name} completed workflow!`, awaiting ? "info" : "success");
+  };
+
+  const handleApprovePendingStep = (stepId: string, approve: boolean) => {
+    if (!activeRun) return;
+    const stepIndex = activeRun.steps.findIndex((s) => s.id === stepId);
+    if (stepIndex === -1) return;
+    const target = activeRun.steps[stepIndex];
+    if (!target.toolCall || target.toolCall.status !== "pending_approval") return;
+
+    const updatedSteps = [...activeRun.steps];
+    let executed = false;
+
+    if (approve) {
+      const workspacePool = notes.length > 0 ? notes : note ? [note] : [];
+      const res = applyToolSideEffects(target.toolCall, workspacePool, folders, reminders);
+      executed = true;
+      if (res.createdId) {
+        const id = res.createdId;
+        setCreatedByRun((prev) => ({ ...prev, [activeRun.id]: id }));
+      }
+      updatedSteps[stepIndex] = {
+        ...target,
+        type: "tool_call",
+        title: `Approved and executed: ${toolLabel(target.toolCall.toolName)}`,
+        detail: res.output,
+        toolCall: { ...target.toolCall, status: "executed", resultSummary: res.output },
+      };
+      onAddToast("Approved! Agent executed tool action.", "success");
+    } else {
+      updatedSteps[stepIndex] = {
+        ...target,
+        title: `Rejected: ${toolLabel(target.toolCall.toolName)}`,
+        detail: "The pending write operation was rejected. No changes were made.",
+        toolCall: { ...target.toolCall, status: "rejected" },
+      };
+      onAddToast("Rejected agent write operation.", "info");
+    }
+
+    const stillPending = (activeRun.pendingToolCalls || []).filter((c) => c.id !== target.toolCall!.id);
+    const done = stillPending.length === 0;
+    const anyExecuted = executed || updatedSteps.some((s) => s.type === "tool_call" && s.toolCall?.status === "executed");
+
+    persistAndSyncRun({
+      ...activeRun,
+      steps: updatedSteps,
+      pendingToolCalls: stillPending.length ? stillPending : undefined,
+      status: done ? (anyExecuted ? "completed" : "rejected") : "awaiting_approval",
+      completedAt: done ? new Date().toISOString() : undefined,
+    });
+  };
 
   const toggleListen = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -276,12 +568,14 @@ export default function AiPanel({
 
   const handleAiAction = async (action: string, options: { language?: string } = {}) => {
     if (!note) {
-      onAddToast("Please open a note first.", "error");
+      onAddToast("Please open a note first to run single-note shortcuts.", "error");
       return;
     }
 
     setIsLoading(true);
     setAiResponse(null);
+    setAiError(null);
+    setLastAction({ action, options });
 
     try {
       if (action === "translate") {
@@ -306,9 +600,9 @@ export default function AiPanel({
       }
 
       const customKey = localStorage.getItem(`aura-gemini-api-key-${currentUserEmail}`) || "";
-      const response = await fetch("/api/ai/action", {
+      const response = await apiFetch("/api/ai/action", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "X-Gemini-API-Key": customKey
         },
@@ -324,10 +618,8 @@ export default function AiPanel({
         setAiResponse(data.result);
         onAddToast(`AI ${action.charAt(0).toUpperCase() + action.slice(1)} completed!`, "success");
 
-        // Special handlers to auto-apply outcomes
         if (action === "tags") {
           try {
-            // Parser of JSON array
             const parsedTags = JSON.parse(data.result);
             if (Array.isArray(parsedTags)) {
               onUpdateNote({
@@ -359,36 +651,9 @@ export default function AiPanel({
         throw new Error(data.error || "Failed to generate AI action.");
       }
     } catch (error: any) {
-      console.warn("AI service unavailable, using client-side fallback suggestions:", error);
-      const localResult = getFallbackAiResponse(action, note.content, selectedLanguage);
-      setAiResponse(localResult);
-      onAddToast("AI Offline Fallback applied!", "info");
-
-      if (action === "tags") {
-        try {
-          const parsedTags = JSON.parse(localResult);
-          if (Array.isArray(parsedTags)) {
-            onUpdateNote({
-              ...note,
-              tags: Array.from(new Set([...note.tags, ...parsedTags])),
-              updatedAt: new Date().toISOString(),
-            });
-            onAddToast("Applied suggested tags (Offline)!", "success");
-          }
-        } catch (e) {}
-      } else if (action === "folders") {
-        try {
-          const parsed = JSON.parse(localResult);
-          if (parsed.suggestedFolder) {
-            onUpdateNote({
-              ...note,
-              folder: parsed.suggestedFolder,
-              updatedAt: new Date().toISOString(),
-            });
-            onAddToast(`Moved to smart category (Offline): ${parsed.suggestedFolder}`, "success");
-          }
-        } catch (e) {}
-      }
+      console.warn("AI request failed:", error);
+      setAiError(error?.message || "No AI model could be reached. Check your API key in Settings, then try again.");
+      onAddToast(error?.message ? `AI unavailable: ${error.message}` : "AI is unavailable right now. Your note was not changed.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -401,13 +666,24 @@ export default function AiPanel({
     const userMsg = chatQuery.trim();
     setChatQuery("");
     setChatHistory((prev) => [...prev, { sender: "user", text: userMsg }]);
+    await sendChat(userMsg);
+  };
+
+  const retryChat = () => {
+    const lastUser = [...chatHistory].reverse().find((m) => m.sender === "user");
+    if (!lastUser) return;
+    setChatHistory((prev) => prev.filter((m, i) => !(m.error && i === prev.length - 1)));
+    void sendChat(lastUser.text);
+  };
+
+  const sendChat = async (userMsg: string) => {
     setIsLoading(true);
 
     try {
       const customKey = localStorage.getItem(`aura-gemini-api-key-${currentUserEmail}`) || "";
-      const response = await fetch("/api/ai/action", {
+      const response = await apiFetch("/api/ai/action", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "X-Gemini-API-Key": customKey
         },
@@ -425,13 +701,12 @@ export default function AiPanel({
         throw new Error(data.error || "Failed to connect to AI chat.");
       }
     } catch (err: any) {
-      console.warn("AI chat service offline, using client-side fallback:", err);
-      const localResult = getFallbackAiResponse("chat", note ? note.content : "", undefined, userMsg);
+      console.warn("AI chat request failed:", err);
       setChatHistory((prev) => [
         ...prev,
-        { sender: "ai", text: localResult },
+        { sender: "ai", text: "AI is unavailable right now (no model reachable). Nothing was changed. Check your API key in Settings or try again.", error: true },
       ]);
-      onAddToast("Chat Co-Pilot in offline backup mode", "info");
+      onAddToast("AI chat unavailable", "error");
     } finally {
       setIsLoading(false);
     }
@@ -462,384 +737,270 @@ export default function AiPanel({
     onAddToast("Replaced note with AI draft!", "success");
   };
 
-  const shortcuts = [
-    {
-      id: "summarize",
-      label: "Summarize Note",
-      desc: "Distill content to core bullets & TL;DR",
-      icon: FileText,
-      color: "text-blue-500 bg-blue-500/10",
-    },
-    {
-      id: "action-items",
-      label: "Extract Action Items",
-      desc: "Construct tasks and assign checklist",
-      icon: ListTodo,
-      color: "text-emerald-500 bg-emerald-500/10",
-    },
-    {
-      id: "meeting-summary",
-      label: "Format Strategy Minutes",
-      desc: "Turn raw scribbles to structured sync outcomes",
-      icon: BookOpen,
-      color: "text-purple-500 bg-purple-500/10",
-    },
-    {
-      id: "improve",
-      label: "Polish Prose & Style",
-      desc: "Fix sentence grammar, clarity, & flow",
-      icon: RefreshCw,
-      color: "text-rose-500 bg-rose-500/10",
-    },
-    {
-      id: "rewrite",
-      label: "Executive Rewrite",
-      desc: "Formalize voice for boardrooms & clients",
-      icon: Sparkles,
-      color: "text-amber-500 bg-amber-500/10",
-    },
+  const QUICK_ACTIONS: { id: string; label: string; icon: React.ReactNode }[] = [
+    { id: "summarize", label: "Summarize", icon: <FileText size={14} /> },
+    { id: "rewrite", label: "Rewrite", icon: <Sparkles size={14} /> },
+    { id: "action-items", label: "Action items", icon: <ListTodo size={14} /> },
+    { id: "improve", label: "Polish style", icon: <RefreshCw size={14} /> },
+    { id: "meeting-summary", label: "Minutes", icon: <BookOpen size={14} /> },
+    { id: "tags", label: "Tags", icon: <Tags size={14} /> },
+    { id: "folders", label: "Folder", icon: <FolderPlus size={14} /> },
   ];
 
-  if (!note) {
-    return (
-      <div
-        id="ai-panel"
-        className="w-full md:w-[360px] h-full border-l border-border-primary flex flex-col flex-shrink-0 transition-all z-10 bg-bg-secondary text-text-primary"
-      >
-        <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-white">
-              <Sparkles size={13} className="animate-pulse" />
-            </div>
-            <span className="font-display font-semibold text-sm tracking-tight text-slate-900 dark:text-zinc-100">
-              Aura AI Assistant
-            </span>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-            >
-              <ChevronRight size={16} />
-            </button>
-          )}
-        </div>
-        <div className="flex-grow flex flex-col items-center justify-center p-6 text-center gap-4">
-          <div className="w-16 h-16 rounded-3xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-            <Sparkles size={28} className="animate-pulse" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-100">No Active Note Selected</h3>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-[240px] leading-relaxed">
-              Aura AI Co-Pilot analyzes notes in real-time. Please select or open a note from your list first.
-            </p>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-[0.98] cursor-pointer"
-            >
-              Open a Note First
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const enabledAgents = agents.filter((a) => a.isEnabled);
 
   return (
-    <div
-      id="ai-panel"
-      className="w-[360px] h-full border-l border-border-primary flex flex-col flex-shrink-0 transition-all z-10 select-none bg-bg-secondary text-text-primary"
-    >
-      {/* Top Header */}
-      <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-white">
-            <Sparkles size={13} className="animate-pulse" />
-          </div>
-          <span className="font-display font-semibold text-sm tracking-tight text-slate-900 dark:text-zinc-100">
-            Aura AI Assistant
+    <div id="ai-panel" className="flex h-full w-full flex-shrink-0 flex-col border-l border-line bg-sidebar text-fg md:w-[380px]">
+      {/* Header */}
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-line px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-soft text-accent" aria-hidden>
+            <Bot size={14} />
           </span>
+          <h2 className="truncate text-[14px] font-semibold text-fg">Aura Assistant</h2>
         </div>
-        <button
-          id="ai-panel-close-btn"
-          onClick={onClose}
-          className="text-slate-400 hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-        >
-          <ChevronRight size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          {onNavigateToAgentStudio && (
+            <Button size="sm" variant="ghost" onClick={onNavigateToAgentStudio} trailingIcon={<ExternalLink size={11} />} title="Open Agent Studio" className="max-md:!h-10">
+              Studio
+            </Button>
+          )}
+          <IconButton id="ai-panel-close-btn" label="Close AI panel" onClick={onClose} className="max-md:!h-10 max-md:!w-10">
+            <ChevronRight size={16} />
+          </IconButton>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-100 dark:border-zinc-800 p-1">
-        <button
-          onClick={() => setCurrentTab("shortcuts")}
-          className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
-            currentTab === "shortcuts"
-              ? theme === "dark"
-                ? "bg-zinc-800 text-white font-semibold"
-                : "bg-slate-100 text-slate-950 font-semibold"
-              : "text-slate-400 hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-300"
-          } cursor-pointer`}
-        >
-          <Sparkles size={12} />
-          Smart Shortcuts
-        </button>
-        <button
-          onClick={() => setCurrentTab("chat")}
-          className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
-            currentTab === "chat"
-              ? theme === "dark"
-                ? "bg-zinc-800 text-white font-semibold"
-                : "bg-slate-100 text-slate-950 font-semibold"
-              : "text-slate-400 hover:text-slate-700 dark:text-zinc-500 dark:hover:text-zinc-300"
-          } cursor-pointer`}
-        >
-          <MessageSquare size={12} />
-          In-Context Chat
-        </button>
-      </div>
+      <Tabs
+        className="shrink-0 px-2"
+        value={currentTab}
+        onChange={(v: string) => setCurrentTab(v as typeof currentTab)}
+        items={[
+          { id: "agents", label: "Agents", icon: <Bot size={13} /> },
+          { id: "shortcuts", label: "Actions", icon: <Sparkles size={13} /> },
+          { id: "chat", label: "Chat", icon: <MessageSquare size={13} /> },
+        ]}
+      />
 
-      {/* Main Body */}
-      <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-4">
-        {currentTab === "shortcuts" ? (
-          <>
-            {/* Shortcut grid */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
-                One-Click Actions
-              </span>
-              {shortcuts.map((sc) => (
-                <button
-                  key={sc.id}
-                  onClick={() => handleAiAction(sc.id)}
-                  className={`w-full text-left p-3 rounded-xl border flex items-start gap-3 transition-all ${
-                    theme === "dark"
-                      ? "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800/40 hover:border-zinc-700 text-zinc-300"
-                      : "bg-slate-50 border-slate-200/50 hover:bg-slate-100/40 hover:border-slate-300 text-slate-700"
-                  } cursor-pointer`}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${sc.color} flex-shrink-0`}>
-                    <sc.icon size={15} />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">{sc.label}</span>
-                    <span className="text-[11px] opacity-60 leading-tight mt-0.5">{sc.desc}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Smart categorization */}
-            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
-              <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-1">
-                Smart Suggestions
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => handleAiAction("tags")}
-                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 justify-center transition-all ${
-                    theme === "dark"
-                      ? "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800/40"
-                      : "bg-slate-50 border-slate-200/50 hover:bg-slate-100/40"
-                  } cursor-pointer`}
-                >
-                  <Tags size={13} className="text-blue-500" />
-                  <span>Generate Tags</span>
-                </button>
-                <button
-                  onClick={() => handleAiAction("folders")}
-                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 justify-center transition-all ${
-                    theme === "dark"
-                      ? "bg-zinc-900/50 border-zinc-800/80 hover:bg-zinc-800/40"
-                      : "bg-slate-50 border-slate-200/50 hover:bg-slate-100/40"
-                  } cursor-pointer`}
-                >
-                  <FolderPlus size={13} className="text-purple-500" />
-                  <span>Suggest Folder</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Language translation */}
-            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
-              <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-                Language Translation
-              </span>
-              <div className="flex gap-1.5">
-                <select
-                  value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className={`flex-grow text-xs p-2 rounded-xl border outline-none ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300"
-                      : "bg-slate-100/60 border-slate-200 text-slate-700"
-                  }`}
-                >
-                  {["Spanish", "French", "Japanese", "German", "Mandarin", "Italian", "Portuguese"].map((lang) => (
-                    <option key={lang} value={lang}>
-                      {lang}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => handleAiAction("translate", { language: selectedLanguage })}
-                  className="px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
-                >
-                  <Languages size={13} />
-                  Translate
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          /* Chat mode workspace */
-          <div className="flex-grow flex flex-col min-h-0">
-            <div className="flex-grow overflow-y-auto flex flex-col gap-3 pb-4">
-              {chatHistory.length === 0 ? (
-                <div className="h-44 flex flex-col items-center justify-center text-center opacity-40 p-4">
-                  <HelpCircle size={24} className="mb-2" />
-                  <span className="text-xs font-medium">Ask Aura anything about this Note</span>
-                  <p className="text-[10px] mt-1 max-w-[200px]">
-                    "Summarize Sarah's points", "Generate a tweet draft from this", or "Convert tasks to table format".
-                  </p>
-                </div>
-              ) : (
-                chatHistory.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-3 rounded-2xl text-xs max-w-[85%] leading-relaxed ${
-                      msg.sender === "user"
-                        ? "bg-blue-500 text-white ml-auto"
-                        : theme === "dark"
-                        ? "bg-zinc-900 border border-zinc-800/80 text-zinc-200"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{msg.text}</p>
-                    {msg.sender === "ai" && (
-                      <div className="mt-2.5 pt-1.5 border-t border-slate-200/40 dark:border-zinc-800/80 flex justify-end gap-2">
+      {/* Body */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 space-y-5 overflow-y-auto p-3">
+          {currentTab === "agents" && (
+            <>
+              <section className="space-y-2">
+                <SectionLabel right={`${enabledAgents.length} active`}>Agent</SectionLabel>
+                {enabledAgents.length === 0 ? (
+                  <EmptyState
+                    icon={<Bot size={18} />}
+                    title="No agents enabled"
+                    description="Enable an agent in Agent Studio to run multi-step workflows."
+                    action={onNavigateToAgentStudio && <Button size="sm" onClick={onNavigateToAgentStudio}>Open Agent Studio</Button>}
+                  />
+                ) : (
+                  <div role="radiogroup" aria-label="Select agent" className="space-y-1.5">
+                    {enabledAgents.map((ag) => {
+                      const isSelected = ag.id === selectedAgent?.id;
+                      return (
                         <button
-                          onClick={() => copyToClipboard(msg.text)}
-                          title="Copy reply"
-                          className="text-[10px] opacity-60 hover:opacity-100 flex items-center gap-0.5"
+                          key={ag.id}
+                          role="radio"
+                          aria-checked={isSelected}
+                          onClick={() => setSelectedAgentId(ag.id)}
+                          className={cn(
+                            "flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors",
+                            "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+                            isSelected ? "border-accent bg-accent-soft" : "border-line bg-panel hover:bg-hover",
+                          )}
                         >
-                          <Copy size={10} />
-                          Copy
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-hover text-[16px]" aria-hidden>{ag.icon}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="truncate text-[13px] font-medium text-fg">{ag.name}</span>
+                              <Badge tone={ag.autonomyLevel === "autonomous" ? "success" : ag.autonomyLevel === "require_approval" ? "warning" : "neutral"}>
+                                {ag.autonomyLevel === "autonomous" ? "Auto" : ag.autonomyLevel === "require_approval" ? "Approval" : "Advisory"}
+                              </Badge>
+                            </span>
+                            <span className="mt-0.5 line-clamp-2 block text-[12px] text-fg-muted">{ag.description}</span>
+                          </span>
                         </button>
-                        {note && (
-                          <button
-                            onClick={() => appendToCurrentNote(msg.text)}
-                            title="Append to active note"
-                            className="text-[10px] text-blue-500 font-medium flex items-center gap-0.5"
-                          >
-                            <ArrowRight size={10} />
-                            Append
-                          </button>
-                        )}
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              {selectedAgent && (
+                <section className="space-y-2 rounded-lg border border-line bg-panel p-3">
+                  <SectionLabel right={`${selectedAgent.allowedTools.length} tools`}>Goal</SectionLabel>
+                  <Textarea
+                    rows={2}
+                    aria-label="Agent goal"
+                    value={agentGoal}
+                    onChange={(e) => setAgentGoal(e.target.value)}
+                    placeholder={`Optional goal for ${selectedAgent.name}. Leave blank for the default workflow.`}
+                    className="min-h-14 resize-none"
+                  />
+                  <Button variant="primary" className="w-full max-md:!h-10" onClick={handleRunAgent} loading={isAgentRunning} leadingIcon={<Play size={13} />}>
+                    {isAgentRunning ? "Running plan..." : `Run ${selectedAgent.name}`}
+                  </Button>
+                </section>
+              )}
+
+              {activeRun && (
+                <section className="space-y-3 border-t border-line pt-4">
+                  <SectionLabel right={<RunStatusBadge status={activeRun.status} />}>Run timeline</SectionLabel>
+                  {activeRun.steps.length === 0 ? <LoadingLines label="Starting agent run" /> : <RunTimeline run={activeRun} onDecide={handleApprovePendingStep} openNoteId={createdByRun[activeRun.id]} onOpenNote={onSelectNote} />}
+                </section>
+              )}
+
+              {recentRuns.length > 0 && (
+                <section className="space-y-2 border-t border-line pt-4">
+                  <SectionLabel>Recent runs</SectionLabel>
+                  <ul className="space-y-1">
+                    {recentRuns.slice(0, 3).map((r) => (
+                      <li key={r.id}>
+                        <button
+                          onClick={() => setActiveRun(r)}
+                          aria-pressed={activeRun?.id === r.id}
+                          className={cn(
+                            "flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hover",
+                            "focus-visible:outline-2 focus-visible:outline-accent",
+                            activeRun?.id === r.id && "bg-accent-soft hover:bg-accent-soft",
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span aria-hidden>{agents.find((ag) => ag.id === r.agentId)?.icon}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-[13px] font-medium text-fg">{r.agentName}</span>
+                              <span className="block truncate text-[12px] text-fg-muted">{r.goal}</span>
+                            </span>
+                          </span>
+                          <Badge tone={r.status === "completed" ? "success" : "warning"}>{r.steps.length} steps</Badge>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
+          )}
+
+          {currentTab === "shortcuts" &&
+            (!note ? (
+              <EmptyState
+                icon={<Sparkles size={18} />}
+                title="Open a note to use quick actions"
+                description="Or switch to Agents to run workflows across your whole workspace."
+                action={<Button size="sm" onClick={() => setCurrentTab("agents")}>Go to Agents</Button>}
+              />
+            ) : (
+              <>
+                <section className="space-y-2">
+                  <SectionLabel>Quick actions</SectionLabel>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {QUICK_ACTIONS.map((qa) => (
+                      <Button key={qa.id} variant="secondary" className="justify-start max-md:!h-10" disabled={isLoading} leadingIcon={qa.icon} onClick={() => handleAiAction(qa.id)}>
+                        {qa.label}
+                      </Button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="space-y-2">
+                  <SectionLabel>Translate</SectionLabel>
+                  <div className="flex gap-1.5">
+                    <Select aria-label="Target language" className="flex-1 max-md:!h-10" value={selectedLanguage} onChange={(e) => setSelectedLanguage(e.target.value)}>
+                      {["Spanish", "French", "Japanese", "German", "Mandarin", "Italian", "Portuguese"].map((lang) => (
+                        <option key={lang} value={lang}>{lang}</option>
+                      ))}
+                    </Select>
+                    <Button variant="secondary" disabled={isLoading} className="max-md:!h-10" leadingIcon={<Languages size={13} />} onClick={() => handleAiAction("translate", { language: selectedLanguage })}>
+                      Translate
+                    </Button>
+                  </div>
+                </section>
+
+                {(aiError || isLoading || aiResponse) && (
+                  <section className="space-y-2 border-t border-line pt-4">
+                    <SectionLabel>Result</SectionLabel>
+                    {aiError && !isLoading && (
+                      <ErrorBanner message={aiError} onRetry={lastAction ? () => handleAiAction(lastAction.action, lastAction.options) : undefined} onDismiss={() => setAiError(null)} />
+                    )}
+                    {isLoading && <LoadingLines />}
+                    {!isLoading && aiResponse && (
+                      <div className="rounded-lg border border-line bg-panel">
+                        <div className="max-h-[320px] overflow-y-auto p-3">
+                          <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-fg">{aiResponse}</p>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-1 border-t border-line p-1.5">
+                          <RowAction onClick={() => copyToClipboard(aiResponse)} icon={<Copy size={12} />}>Copy</RowAction>
+                          <RowAction onClick={() => appendToCurrentNote(aiResponse)}>Append</RowAction>
+                          <RowAction onClick={() => replaceNoteContent(aiResponse)}>Replace note</RowAction>
+                        </div>
                       </div>
                     )}
-                  </div>
-                ))
-              )}
-            </div>
+                  </section>
+                )}
+              </>
+            ))}
 
-            {/* Input form */}
-            <form onSubmit={handleSendChat} className="flex gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
-              <input
-                type="text"
-                value={chatQuery}
-                onChange={(e) => setChatQuery(e.target.value)}
-                placeholder="Ask about this document..."
-                className={`flex-grow text-xs px-3 py-2.5 rounded-xl border outline-none ${
-                  theme === "dark"
-                    ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-600"
-                    : "bg-slate-100/60 border-slate-200 text-slate-800 focus:bg-white focus:border-blue-400"
-                }`}
+          {currentTab === "chat" &&
+            (chatHistory.length === 0 ? (
+              <EmptyState
+                icon={<HelpCircle size={18} />}
+                title="Ask about this note"
+                description='Try "Summarize the key points" or "Turn the tasks into a table".'
               />
-              <button
-                type="button"
-                onClick={toggleListen}
-                title={isListening ? "Stop listening" : "Dictate prompt"}
-                className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
-                  isListening
-                    ? "bg-rose-50 border-rose-200 text-rose-500 animate-pulse dark:bg-rose-950/20 dark:border-rose-900/50"
-                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-white"
-                }`}
-              >
-                {isListening ? <MicOff size={13} /> : <Mic size={13} />}
-              </button>
-              <button
-                type="submit"
-                disabled={!chatQuery.trim() || isLoading}
-                className={`p-2.5 rounded-xl text-white shadow-sm transition-all ${
-                  !chatQuery.trim() || isLoading
-                    ? "bg-slate-200 dark:bg-zinc-800 text-slate-400 cursor-not-allowed"
-                    : "bg-blue-500 hover:bg-blue-600 active:scale-[0.98] cursor-pointer"
-                }`}
-              >
-                <Send size={13} />
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* AI Output / Result Panel for Shortcuts */}
-        {currentTab === "shortcuts" && (aiResponse || isLoading) && (
-          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800 flex flex-col flex-shrink-0 min-h-0">
-            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
-              AI Insight Output
-            </span>
-
-            {isLoading ? (
-              /* Shimmering Skeleton loader */
-              <div className="shimmer-bg p-4 rounded-2xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-100 dark:border-zinc-800/60 flex flex-col gap-2.5">
-                <div className="h-3 w-1/3 bg-slate-200 dark:bg-zinc-800 rounded-full"></div>
-                <div className="h-2 w-full bg-slate-200 dark:bg-zinc-800 rounded-full"></div>
-                <div className="h-2 w-5/6 bg-slate-200 dark:bg-zinc-800 rounded-full"></div>
-                <div className="h-2 w-4/5 bg-slate-200 dark:bg-zinc-800 rounded-full"></div>
-              </div>
             ) : (
-              aiResponse && (
-                <div
-                  className={`p-4 rounded-2xl text-xs max-h-[300px] overflow-y-auto leading-relaxed border ${
-                    theme === "dark"
-                      ? "bg-zinc-950 border-zinc-800/80 text-zinc-200"
-                      : "bg-slate-50 border-slate-200 text-slate-800"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap font-sans">{aiResponse}</p>
+              <div className="space-y-4" aria-live="polite">
+                {chatHistory.map((msg, idx) => (
+                  <MessageRow
+                    key={idx}
+                    sender={msg.sender}
+                    userName={currentUserEmail || "You"}
+                    text={msg.text}
+                    error={msg.error}
+                    actions={
+                      msg.sender === "ai" && msg.error ? (
+                        <RowAction onClick={retryChat} icon={<RefreshCw size={12} />}>Retry</RowAction>
+                      ) : msg.sender === "ai" ? (
+                        <>
+                          <RowAction onClick={() => copyToClipboard(msg.text)} icon={<Copy size={12} />}>Copy</RowAction>
+                          {note && <RowAction onClick={() => appendToCurrentNote(msg.text)} icon={<ArrowRight size={12} />}>Append</RowAction>}
+                        </>
+                      ) : undefined
+                    }
+                  />
+                ))}
+                {isLoading && <LoadingLines />}
+                <div ref={chatEndRef} />
+              </div>
+            ))}
+        </div>
 
-                  <div className="mt-4 pt-2.5 border-t border-slate-200/60 dark:border-zinc-800 flex justify-end gap-2">
-                    <button
-                      onClick={() => copyToClipboard(aiResponse)}
-                      className="px-2.5 py-1.5 hover:bg-slate-200/50 dark:hover:bg-zinc-850 rounded-lg flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400 cursor-pointer"
-                    >
-                      <Copy size={11} />
-                      Copy
-                    </button>
-                    {note && (
-                      <>
-                        <button
-                          onClick={() => appendToCurrentNote(aiResponse)}
-                          className="px-2.5 py-1.5 hover:bg-slate-200/50 dark:hover:bg-zinc-850 rounded-lg flex items-center gap-1 text-blue-500 font-semibold cursor-pointer"
-                        >
-                          Append
-                        </button>
-                        <button
-                          onClick={() => replaceNoteContent(aiResponse)}
-                          className="px-2.5 py-1.5 hover:bg-rose-100/50 dark:hover:bg-rose-950/20 rounded-lg flex items-center gap-1 text-rose-500 font-semibold cursor-pointer"
-                        >
-                          Replace
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            )}
-          </div>
+        {currentTab === "chat" && (
+          <form onSubmit={handleSendChat} className="shrink-0 border-t border-line p-3">
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1">
+                <Input
+                  aria-label="Message Aura"
+                  value={chatQuery}
+                  onChange={(e) => setChatQuery(e.target.value)}
+                  placeholder="Ask about this document..."
+                  className="max-md:!h-10"
+                />
+              </div>
+              <IconButton type="button" label={isListening ? "Stop dictation" : "Dictate message"} aria-pressed={isListening} onClick={toggleListen} variant={isListening ? "subtle" : "ghost"} className="max-md:!h-10 max-md:!w-10">
+                {isListening ? <MicOff size={14} className="text-danger" /> : <Mic size={14} />}
+              </IconButton>
+              <IconButton type="submit" label="Send message" variant="primary" disabled={!chatQuery.trim() || isLoading} className="max-md:!h-10 max-md:!w-10">
+                <Send size={14} />
+              </IconButton>
+            </div>
+            <p className="mt-1.5 hidden items-center gap-1 text-[11px] text-fg-subtle md:flex">
+              <Kbd>Enter</Kbd> to send
+            </p>
+          </form>
         )}
       </div>
     </div>

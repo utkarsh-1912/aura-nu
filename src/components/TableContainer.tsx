@@ -144,22 +144,22 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
       {/* Table Editor Toolbar */}
       {!isLocked && onUpdateTable && (
         <div className="flex items-center justify-between mb-1.5 px-1 select-none">
-          <span className="text-[10px] font-bold tracking-wider uppercase text-slate-400 dark:text-zinc-500">
-            Interactive Table
+          <span className="text-[11px] font-medium tracking-wide uppercase text-fg-subtle">
+            Table
           </span>
           <div className="flex items-center gap-1.5">
             <button
               onClick={addColumn}
-              className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-850 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200/40 dark:border-zinc-850 cursor-pointer shadow-xs transition-colors"
-              title="Add Column"
+              className="flex items-center gap-1 text-[12px] font-medium h-7 px-2 rounded-md bg-panel border border-line text-fg-muted hover:bg-hover hover:text-fg cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-accent"
+              title="Add column"
             >
               <Plus size={10} />
               <span>Column</span>
             </button>
             <button
               onClick={addRow}
-              className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-850 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200/40 dark:border-zinc-850 cursor-pointer shadow-xs transition-colors"
-              title="Add Row"
+              className="flex items-center gap-1 text-[12px] font-medium h-7 px-2 rounded-md bg-panel border border-line text-fg-muted hover:bg-hover hover:text-fg cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-accent"
+              title="Add row"
             >
               <Plus size={10} />
               <span>Row</span>
@@ -169,18 +169,18 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
       )}
 
       {/* Styled Minimalist Table */}
-      <div className="w-full overflow-x-auto my-2 border-b border-slate-100 dark:border-zinc-900/50">
+      <div className="w-full overflow-x-auto my-2 rounded-lg border border-line bg-sidebar">
         <table className="w-full text-left border-collapse text-[12px] leading-normal table-auto">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-zinc-800/80">
+            <tr className="border-b border-line bg-panel">
               {/* Row Deletion header spacer */}
               {!isLocked && onUpdateTable && (
-                <th className="w-8 px-1 py-2 text-center text-slate-300 dark:text-zinc-650"></th>
+                <th className="w-8 px-1 py-2 text-center text-fg-subtle"></th>
               )}
               {headers.map((header, idx) => (
                 <th
                   key={idx}
-                  className="px-2 py-2 font-semibold text-slate-400 dark:text-zinc-500 relative group/cell min-w-[100px] select-none"
+                  className="px-2 py-2 font-medium text-fg-muted relative group/cell min-w-[100px] select-none"
                 >
                   <div className="flex items-center justify-between gap-1.5 min-w-0">
                     <span
@@ -193,15 +193,15 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
                           e.currentTarget.blur();
                         }
                       }}
-                      className="outline-none focus:bg-blue-500/10 focus:ring-1 focus:ring-blue-400 rounded px-1 flex-grow truncate block min-h-[1.2em]"
+                      className="outline-none focus:bg-accent-soft focus:ring-1 focus:ring-accent rounded px-1 flex-grow truncate block min-h-[1.2em]"
                     >
                       {header}
                     </span>
                     {!isLocked && onUpdateTable && headers.length > 1 && (
                       <button
                         onClick={() => deleteColumn(idx)}
-                        className="opacity-0 group-hover/cell:opacity-100 p-0.5 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 shrink-0 cursor-pointer transition-all"
-                        title="Delete Column"
+                        className="opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100 p-1 rounded text-danger hover:bg-danger-soft shrink-0 cursor-pointer transition-all"
+                        title="Delete column" aria-label="Delete column"
                       >
                         <Trash2 size={10} />
                       </button>
@@ -215,7 +215,7 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
             {dataRows.map((rowCells, rIdx) => (
               <tr
                 key={rIdx}
-                className="border-b border-slate-100 dark:border-zinc-900/50 hover:bg-slate-50/30 dark:hover:bg-zinc-900/10 transition-colors"
+                className="border-b border-line last:border-b-0 hover:bg-hover transition-colors"
               >
                 {/* Row Deletion action cell */}
                 {!isLocked && onUpdateTable && (
@@ -223,8 +223,8 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
                     {dataRows.length > 1 && (
                       <button
                         onClick={() => deleteRow(rIdx)}
-                        className="p-0.5 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 cursor-pointer inline-flex items-center justify-center transition-all"
-                        title="Delete Row"
+                        className="p-1 rounded text-fg-subtle hover:text-danger hover:bg-danger-soft cursor-pointer inline-flex items-center justify-center transition-all"
+                        title="Delete row" aria-label="Delete row"
                       >
                         <Trash2 size={10} />
                       </button>
@@ -234,7 +234,7 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
                 {rowCells.map((cell, cIdx) => (
                   <td
                     key={cIdx}
-                    className="px-2 py-2 text-slate-700 dark:text-zinc-300 relative group/cell"
+                    className="px-2 py-2 text-fg relative group/cell"
                   >
                     <div className="flex items-center justify-between gap-1.5 min-w-0">
                       <span
@@ -247,7 +247,7 @@ export default function TableContainer({ rows, theme, onUpdateTable, isLocked = 
                             e.currentTarget.blur();
                           }
                         }}
-                        className="outline-none focus:bg-blue-500/10 focus:ring-1 focus:ring-blue-400 rounded px-1 flex-grow block min-h-[1.2em]"
+                        className="outline-none focus:bg-accent-soft focus:ring-1 focus:ring-accent rounded px-1 flex-grow block min-h-[1.2em]"
                       >
                         {cell}
                       </span>
