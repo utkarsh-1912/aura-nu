@@ -42,6 +42,9 @@ export default function NoteBodyEditor({ noteId, value, readOnly, notes, onChang
   useEffect(() => setActive(0), [suggest?.query]);
 
   const emit = useCallback((md: string) => {
+    // TipTap may normalise Markdown while mounting. That must not count as an edit (it would bump
+    // updatedAt and add a version just for opening a note), so only emit after a real interaction.
+    if (!dirty.current) return;
     dirty.current = false;
     cb.current.onChange(md);
   }, []);
@@ -60,6 +63,7 @@ export default function NoteBodyEditor({ noteId, value, readOnly, notes, onChang
 
   const pick = useCallback((s: Suggestion) => {
     if (!suggest) return;
+    dirty.current = true; // picking a suggestion is a real edit (the popup swallows the key event before it reaches the wrapper)
     handle.current?.insertWikiLink({ from: suggest.from, to: suggest.to }, s.title);
     setSuggest(null);
   }, [suggest]);
@@ -88,6 +92,11 @@ export default function NoteBodyEditor({ noteId, value, readOnly, notes, onChang
       className="aura-note-editor"
       data-readonly={readOnly ? "true" : "false"}
       onInput={markDirty}
+      onKeyDownCapture={markDirty}
+      onBeforeInputCapture={markDirty}
+      onPasteCapture={markDirty}
+      onDropCapture={markDirty}
+      onCutCapture={markDirty}
       onClickCapture={(e) => { if ((e.target as HTMLElement).tagName === "INPUT") markDirty(); }}
     >
       <Suspense fallback={<div className="space-y-2" aria-busy="true"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div>}>
