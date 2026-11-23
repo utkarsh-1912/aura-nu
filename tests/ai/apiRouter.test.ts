@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import express from "express";
 import request from "supertest";
-import { createAiRouter, type AiMeter } from "../../api/ai/router";
+import { createAiRouter, type AiMeter } from "../../server/ai/router";
 import { AiRouter } from "../../src/ai/router";
 import { AiError } from "../../src/ai/types";
 import { FakeProvider, ok } from "./fakes";

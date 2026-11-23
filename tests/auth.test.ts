@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import express from "express";
 import request from "supertest";
 import { SignJWT, generateKeyPair, createLocalJWKSet, exportJWK } from "jose";
-import { requireAuth, getUserEmail, type AuthConfig } from "../api/auth";
+import { requireAuth, getUserEmail, type AuthConfig } from "../server/auth";
 
 const PROJECT = "aura-test";
 let privateKey: CryptoKey;

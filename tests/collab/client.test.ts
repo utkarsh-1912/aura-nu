@@ -8,8 +8,8 @@ import { Awareness } from "y-protocols/awareness";
 import { seedFromMarkdown, exportMarkdown, applyTextDiff, fnv1a } from "../../src/collab/markdown";
 import { colorForUser, listPeers, makeLocalUser, setLocalUser, uniquePeers } from "../../src/collab/presence";
 import { backoffDelay, createNoteCollab, roomForNote } from "../../src/collab/provider";
-import { attachCollabServer } from "../../api/collab/server";
-import { MemoryDocStore } from "../../api/collab/docStore";
+import { attachCollabServer } from "../../server/collab/server";
+import { MemoryDocStore } from "../../server/collab/docStore";
 
 describe("markdown seeding", () => {
   it("seeds once, exports back", () => {

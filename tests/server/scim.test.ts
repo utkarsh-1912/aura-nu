@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import request from "supertest";
 import { bearer, makeHarness, note } from "./harness";
-import { noteKey } from "../../api/grantStore";
+import { noteKey } from "../../server/grantStore";
 
 type H = Awaited<ReturnType<typeof makeHarness>>;
 let h: H;

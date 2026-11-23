@@ -4,7 +4,7 @@
 - `src/ai/types.ts`, `jsonSchema.ts`, `router.ts` - provider-agnostic types, JSON-schema-subset validator, `AiRouter`.
 - `src/ai/adapters/` - `openaiCompatible.ts` (tested against an in-test HTTP server), `gemini.ts` (server-only; tested only via typecheck, no live call), `localEmbedded.ts` (interface + stub, NOT functional).
 - `src/ai/retrieval.ts` - chunking, cosine, in-memory vector store, BM25, RRF, `HybridIndex`, citations, `wrapUntrusted`.
-- `api/ai/router.ts` - `createAiRouter(deps)` Express router (chat, complete, embed, models). NOT mounted.
+- `server/ai/router.ts` - `createAiRouter(deps)` Express router (chat, complete, embed, models). NOT mounted.
 - `models/catalog.{json,schema.json,ts}`, `bench/` (tasks, metrics, runner, CLI), `tests/ai/` (70 tests).
 
 ## Wiring needed from the lead

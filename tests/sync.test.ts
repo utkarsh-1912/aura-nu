@@ -5,10 +5,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { isDestructiveSync, mergeNoteFields, validateNoteInput, NoteInput } from "../src/core/sync";
-import { MemoryNoteStore, FileNoteStore } from "../api/noteStore";
-import { createSyncRouter } from "../api/syncRoutes";
-import { requireAuth } from "../api/auth";
-import { requireOrgRole, ORG_ADMINS, ANY_MEMBER } from "../api/orgAccess";
+import { MemoryNoteStore, FileNoteStore } from "../server/noteStore";
+import { createSyncRouter } from "../server/syncRoutes";
+import { requireAuth } from "../server/auth";
+import { requireOrgRole, ORG_ADMINS, ANY_MEMBER } from "../server/orgAccess";
 import { emptyState, editNote, deleteNote, syncOnce, visibleNotes, Transport, SyncState } from "../src/core/syncEngine";
 
 const note = (id: string, over: Partial<NoteInput> = {}): NoteInput => ({

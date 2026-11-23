@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import express from "express";
 import request from "supertest";
-import { MemoryMeteringStore, MongoMeteringStore, meteringMiddleware, periodOf, nextPeriodStart } from "../../api/enterprise/metering";
+import { MemoryMeteringStore, MongoMeteringStore, meteringMiddleware, periodOf, nextPeriodStart } from "../../server/enterprise/metering";
 import type { UserTier } from "../../src/types";
 
 function mk(tier: UserTier, opts: Partial<Parameters<typeof meteringMiddleware>[0]> = {}, handlerStatus = 200) {

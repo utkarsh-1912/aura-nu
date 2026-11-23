@@ -12,7 +12,7 @@ Status: pure logic is unit-tested (`npx vitest run tests/capture`). Anything tou
 ## Service worker policy
 - Shell precache (`/`, `/offline.html`, manifest, logo), versioned by `CACHE_VERSION` (bump per release). Hashed `/assets/*` are cached at runtime (stale-while-revalidate), so no build manifest is needed.
 - Navigations: network-first, fall back to cached `/`, then `/offline.html`.
-- `/api/auth*`: never cached. API writes: never cached (`queueOnFailure` flag for the future outbox).
+- `/server/auth*`: never cached. API writes: never cached (`queueOnFailure` flag for the future outbox).
 - `/api/*` GET: network-first. Cached ONLY when an `Authorization` header is present, under a key scoped by a hash of that header, and never when the response is `no-store`/`private`/sets cookies or is not 200. Send `CLEAR_USER_DATA` on logout (`clearUserCaches()`).
 - Caveat: header-scoped keys isolate users but cached data still sits on disk in the browser profile until logout/clear. Treat "Private" E2E vault payloads as non-cacheable at the API layer (`Cache-Control: private`).
 - Updates: no automatic `skipWaiting`; page shows a prompt, then `applyUpdate()`.

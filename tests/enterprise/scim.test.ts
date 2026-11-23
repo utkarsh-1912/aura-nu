@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import { createScimRouter } from "../../api/enterprise/scim";
-import { MemoryScimDirectory, MemoryScimTokens } from "../../api/enterprise/scimStore";
+import { createScimRouter } from "../../server/enterprise/scim";
+import { MemoryScimDirectory, MemoryScimTokens } from "../../server/enterprise/scimStore";
 
 const PATCH = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
 let tokens: MemoryScimTokens, dir: MemoryScimDirectory, tokA: string, tokB: string, onDeprovision: any;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MemoryNoteStore } from "../api/noteStore";
+import { MemoryNoteStore } from "../server/noteStore";
 import { SyncController, Persisted, SyncStorage } from "../src/core/syncController";
 import { Transport } from "../src/core/syncEngine";
 import { toSyncInput, canon, mergeIntoUi, applyUiChanges, adoptNewerEntries, unionLegacy } from "../src/core/uiBridge";

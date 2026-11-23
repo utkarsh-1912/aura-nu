@@ -8,15 +8,15 @@ Everything here is additive. Nothing in shared files was edited. Tests: `npx vit
 |---|---|
 | `src/core/acl.ts` | Pure ACL: roles, inheritance, deny-overrides, signed expiring share links, grant-escalation guard |
 | `src/core/dlp.ts` | Pure DLP: secret/PII detectors, custom regex (validated), policy engine, redaction |
-| `api/collab/server.ts` | `attachCollabServer(httpServer, deps)`: authenticated Yjs sync + awareness WebSocket server |
-| `api/collab/docStore.ts` | `DocStore`: `MemoryDocStore`, `FileDocStore`, `MongoDocStore` (UNTESTED vs live Mongo) |
-| `api/collab/access.ts` | `createAclAccessChecker(AclSource)` bridges ACL resolver to the server |
-| `api/collab/crypto.ts` | `nodeShareCrypto` (HMAC-SHA256 + constant-time compare) for share tokens |
+| `server/collab/server.ts` | `attachCollabServer(httpServer, deps)`: authenticated Yjs sync + awareness WebSocket server |
+| `server/collab/docStore.ts` | `DocStore`: `MemoryDocStore`, `FileDocStore`, `MongoDocStore` (UNTESTED vs live Mongo) |
+| `server/collab/access.ts` | `createAclAccessChecker(AclSource)` bridges ACL resolver to the server |
+| `server/collab/crypto.ts` | `nodeShareCrypto` (HMAC-SHA256 + constant-time compare) for share tokens |
 | `src/collab/provider.ts` | `createNoteCollab(...)`: Y.Doc + y-indexeddb + websocket with token refresh and backoff |
 | `src/collab/markdown.ts` | `seedFromMarkdown` (idempotent across clients), `exportMarkdown`, `applyTextDiff` |
 | `src/collab/presence.ts` | Awareness helpers (name/colour/cursor), sanitised peer listing |
-| `api/enterprise/scim.ts`, `scimStore.ts` | `createScimRouter(deps)`, in-memory directory + hashed token store |
-| `api/enterprise/metering.ts` | `meteringMiddleware`, `MemoryMeteringStore`, `MongoMeteringStore` (UNTESTED vs live Mongo) |
+| `server/enterprise/scim.ts`, `scimStore.ts` | `createScimRouter(deps)`, in-memory directory + hashed token store |
+| `server/enterprise/metering.ts` | `meteringMiddleware`, `MemoryMeteringStore`, `MongoMeteringStore` (UNTESTED vs live Mongo) |
 
 ## Wiring required from the lead
 
@@ -37,7 +37,7 @@ server.listen(PORT);
 process.on("SIGTERM", async () => { await collab.close(); server.close(); });
 ```
 `loadChain(noteId)` must return `[workspace, ...folders, note]` as `ChainNode[]` (with `ownerEmail` on the note/workspace) or `null` if absent. Grants and groups come from your own collections (groups can be fed by SCIM).
-The default authenticator reuses `resolveIdentity` (Firebase ID token). No change to `api/auth.ts` is needed.
+The default authenticator reuses `resolveIdentity` (Firebase ID token). No change to `server/auth.ts` is needed.
 
 ### 2. Mount SCIM
 ```ts
@@ -87,7 +87,7 @@ Terminate TLS (wss) at the proxy. Configure access logs to omit the `Sec-WebSock
 
 | Threat | Mitigation | Residual / note |
 |---|---|---|
-| Unauthenticated socket | Token verified on upgrade (Firebase JWKS via `resolveIdentity`) before the handshake completes | Dev-header fallback follows `api/auth.ts` rules (off in production) |
+| Unauthenticated socket | Token verified on upgrade (Firebase JWKS via `resolveIdentity`) before the handshake completes | Dev-header fallback follows `server/auth.ts` rules (off in production) |
 | Token leakage in logs | Token travels in `Sec-WebSocket-Protocol`, never the URL; query-string tokens are ignored (tested) | Proxy must not log that header; ID tokens live ~1 h |
 | Cross-site WebSocket hijack | Optional exact-match `Origin` allow-list; no cookies are used for auth | Set `allowedOrigins` in production |
 | Reading/writing another user's note | Per-room check via `AccessChecker` on upgrade; 403 for both no-access and nonexistent | Correctness depends on your `AclSource` data |

@@ -3,8 +3,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { FileCollection, MemoryCollection, MongoCollection, createCollectionFactory, matches, type MongoCollLike } from "../../api/persist";
-import { GrantStore, noteKey, roomOf, type ResourceDoc } from "../../api/grantStore";
+import { FileCollection, MemoryCollection, MongoCollection, createCollectionFactory, matches, type MongoCollLike } from "../../server/persist";
+import { GrantStore, noteKey, roomOf, type ResourceDoc } from "../../server/grantStore";
 
 type Doc = { n: number; tag?: string; list?: string[] };
 const dirs: string[] = [];

@@ -3,8 +3,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import request from "supertest";
 import { bearer, makeHarness } from "./harness";
 import { FakeProvider, ok } from "../ai/fakes";
-import { CollectionMeteringStore, strictest } from "../../api/aiPolicy";
-import { MemoryCollection } from "../../api/persist";
+import { CollectionMeteringStore, strictest } from "../../server/aiPolicy";
+import { MemoryCollection } from "../../server/persist";
 import { TIER_PERMISSIONS } from "../../src/lib/tierPermissions";
 
 type H = Awaited<ReturnType<typeof makeHarness>>;

@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import request from "supertest";
 import { bearer, makeHarness, note, SECRET } from "./harness";
-import { noteKey, folderKey } from "../../api/grantStore";
+import { noteKey, folderKey } from "../../server/grantStore";
 
 let t0 = Date.parse("2026-06-01T00:00:00Z");
 const clock = { now: () => t0 };

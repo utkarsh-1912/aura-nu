@@ -53,7 +53,7 @@ export const DEFAULT_LIMITS: CollabLimits = {
 export interface CollabDeps {
   store: DocStore;
   access: AccessChecker;
-  /** Returns the verified email or null. Default: Firebase token via resolveIdentity (api/auth.ts). */
+  /** Returns the verified email or null. Default: Firebase token via resolveIdentity (server/auth.ts). */
   authenticate?: (token: string | null, req: IncomingMessage) => Promise<{ email: string } | null>;
   /** Exact-match Origin allow-list. If set, browser requests with another Origin are refused. */
   allowedOrigins?: string[];

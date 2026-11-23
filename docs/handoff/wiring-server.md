@@ -1,6 +1,6 @@
 # Server wiring (collab, shares, SCIM, metering, AI policy)
 
-Code: `api/platform.ts` (composition), `api/persist.ts` (Memory/File/Mongo collections), `api/grantStore.ts`, `api/sharesRoutes.ts`, `api/tenancy.ts`, `api/aiPolicy.ts`, `api/enterprise/scimPersist.ts`. `api/index.ts` only wires them. Tests: `tests/server/*` (94).
+Code: `server/platform.ts` (composition), `server/persist.ts` (Memory/File/Mongo collections), `server/grantStore.ts`, `server/sharesRoutes.ts`, `server/tenancy.ts`, `server/aiPolicy.ts`, `server/enterprise/scimPersist.ts`. `api/index.ts` only wires them. Tests: `tests/server/*` (94).
 
 ## Env vars
 `SHARE_LINK_SECRET` (>=16 chars; unset => share-link routes 503, user-to-user shares still work), `COLLAB_ALLOWED_ORIGINS`, `COLLAB_DATA_DIR`, `AURA_DATA_DIR` (file backend root; platform data in `<dir>/platform/`), `SCIM_BASE_URL`, `AURA_AI_POLICY`, `MONGODB_URI`, `FIREBASE_PROJECT_ID`. Add `.collab-data` / `.aura-data` to .gitignore.

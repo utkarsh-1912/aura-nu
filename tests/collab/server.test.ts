@@ -8,9 +8,9 @@ import type { AddressInfo } from "node:net";
 import WebSocket from "ws";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
-import { attachCollabServer, SUBPROTOCOL, type CollabServer, type AccessChecker } from "../../api/collab/server";
-import { MemoryDocStore, FileDocStore, type DocStore } from "../../api/collab/docStore";
-import { createAclAccessChecker } from "../../api/collab/access";
+import { attachCollabServer, SUBPROTOCOL, type CollabServer, type AccessChecker } from "../../server/collab/server";
+import { MemoryDocStore, FileDocStore, type DocStore } from "../../server/collab/docStore";
+import { createAclAccessChecker } from "../../server/collab/access";
 import type { ShareRole } from "../../src/core/acl";
 
 const ROOM = "note:abc123";

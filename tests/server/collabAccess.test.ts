@@ -4,9 +4,9 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import request from "supertest";
 import WebSocket from "ws";
-import { attachCollabServer, SUBPROTOCOL, type CollabServer } from "../../api/collab/server";
-import { MemoryDocStore } from "../../api/collab/docStore";
-import { noteKey } from "../../api/grantStore";
+import { attachCollabServer, SUBPROTOCOL, type CollabServer } from "../../server/collab/server";
+import { MemoryDocStore } from "../../server/collab/docStore";
+import { noteKey } from "../../server/grantStore";
 import { bearer, collabAuthenticate, makeHarness, note, tokenFor } from "./harness";
 
 type H = Awaited<ReturnType<typeof makeHarness>>;

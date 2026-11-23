@@ -3,7 +3,7 @@ import {
   resolveRole, can, canGrant, createShareToken, verifyShareToken, resolveRoleWithLink,
   fromWorkspaceRole, type ChainNode, type Grant,
 } from "../../src/core/acl";
-import { nodeShareCrypto as crypto } from "../../api/collab/crypto";
+import { nodeShareCrypto as crypto } from "../../server/collab/crypto";
 
 const chain: ChainNode[] = [
   { type: "workspace", id: "w1", ownerEmail: "boss@x.io" },
